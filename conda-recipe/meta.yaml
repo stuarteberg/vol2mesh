@@ -1,0 +1,38 @@
+package:
+    name: vol2mesh
+
+  # Automatically determine the version from the last git tag
+  {% if GIT_DESCRIBE_NUMBER|int == 0 %}
+    version: "{{GIT_DESCRIBE_TAG}}"
+  {% else %}
+    # If we're using a non-tagged revision, append '.postN' to the version
+    version: "{{GIT_DESCRIBE_TAG}}.post{{GIT_DESCRIBE_NUMBER}}"
+  {% endif %}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  script: python setup.py install --single-version-externally-managed --record record.txt
+  
+requirements:
+  build:
+    - python 3.6*
+    - setuptools
+
+  run:
+    - python 3.6*
+    - marching_cubes
+    - fq-mesh-simplification
+    - tifffile
+
+test:
+  imports:
+    - vol2mesh
+    - vol2mesh.vol2mesh
+
+about:
+  home: https://github.com/mmorehea/vol2mesh
+  license: Unknown
+  summary: Tools for converting image volumes to meshes
