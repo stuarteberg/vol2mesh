@@ -88,12 +88,12 @@ def writeMesh(results):
 	print("Decimating Mesh...")
 	stackname = "boop"
 	# if os.name == 'nt':
-	# 	s = './binWindows/simplify ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
+	# 	s = 'fq-mesh-simplify' + ' ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
 	# else:
 	# 	if platform.system() == "Darwin":
-	# 		s = './binOSX/simplify ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
+	# 		s = 'fq-mesh-simplify' + ' ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
 	# 	else:
-	# 		s = './binLinux/simplify ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
+	# 		s = 'fq-mesh-simplify' + ' ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
 	#print(s)
 
 

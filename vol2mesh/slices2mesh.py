@@ -69,13 +69,7 @@ def calcMesh(stackname, labelStack, simplify):
 			f.write("f %d %d %d \n" % (face[0]+1, face[1]+1, face[2]+1))
 	print("Decimating Mesh...")
 	largeZ = box[5]
-	if os.name == 'nt':
-		s = './binWindows/simplify ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
-	else:
-		if platform.system() == "Darwin":
-			s = './binOSX/simplify ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
-		else:
-			s = './binLinux/simplify ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
+	s = 'fq-mesh-simplify' + ' ./' + stackname +".obj ./" + stackname +".smooth.obj " + str(simplify)
 	print(s)
 	#subprocess.call(s, shell=True)
 	return largeZ

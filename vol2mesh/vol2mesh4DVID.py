@@ -65,13 +65,7 @@ def calcMeshWithCrop(stackname, labelStack, location, simplify, tags):
 		for face in faces:
 			f.write("f %d %d %d \n" % (face[2]+1, face[1]+1, face[0]+1))
 	print("Decimating Mesh...")
-	if os.name == 'nt':
-		s = './binWindows/simplify ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
-	else:
-		if platform.system() == "Darwin":
-			s = './binOSX/simplify ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
-		else:
-			s = './binLinux/simplify ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
+	s = 'fq-mesh-simplify' + ' ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
 	print(s)
 	subprocess.call(s, shell=True)
 
@@ -93,14 +87,7 @@ def calcMesh(stackname, labelStack, location, simplify, tags):
 		print("writing faces...")
 		f.write(''.join(faceStrings))
 	print("Decimating Mesh...")
-	if os.name == 'nt':
-		s = 'binWindows\\simplify.exe ' + location[:-1] + '\\' + os.path.basename(stackname) +".obj " + location[:-1] + '\\' + os.path.basename(stackname) +".smooth.obj " + str(simplify)
-		return
-	else:
-		if platform.system() == "Darwin":
-			s = './binOSX/simplify ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
-		else:
-			s = './binLinux/simplify ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
+	s = 'fq-mesh-simplify' + ' ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
 	print(s)
 	subprocess.call(s, shell=True)
 
@@ -128,14 +115,11 @@ def calcMeshWithOffsets(stackname, labelStack, location, simplify):
 		print("writing faces...")
 		f.write(''.join(faceStrings))
 	print("Decimating Mesh...")
-	if os.name == 'nt':
-		s = 'binWindows\\simplify.exe ' + location[:-1] + '\\' + os.path.basename(stackname) +".obj " + location[:-1] + '\\' + os.path.basename(stackname) +".smooth.obj " + str(simplify)
-		return
-	else:
-		if platform.system() == "Darwin":
-			s = './binOSX/simplify ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
-		else:
-			s = './binLinux/simplify ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
+	#if os.name == 'nt':
+	#	s = 'fq-mesh-simplify' + location[:-1] + '\\' + os.path.basename(stackname) +".obj " + location[:-1] + '\\' + os.path.basename(stackname) +".smooth.obj " + str(simplify)
+	#	return
+	assert platform.system() in ("Darwin", "Linux"), "Windows not supported."
+	s = 'fq-mesh-simplify' + ' ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
 	print(s)
 	subprocess.call(s, shell=True)
 
