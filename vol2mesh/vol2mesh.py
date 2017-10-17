@@ -6,11 +6,13 @@ import platform
 import threading
 import subprocess
 from io import BytesIO
+from shutil import copyfileobj
 from contextlib import contextmanager
 
 import numpy as np
 import tifffile
 from marching_cubes import march
+
 
 SCALEX = 1.0
 SCALEY = 1.0
@@ -40,38 +42,44 @@ def findBBDimensions(listOfPixels):
 def temp_pipe(name):
     """
     Context manager.
-    Create a temporary named pipe, with the given basename (do not include directory).
+    Create a temporary named pipe, with the given name.
     The pipe is deleted when the context is exited.
+    
+    name: An arbitrary basename for the pipe.  Should not be a full path.
     
     yields: the full path to the named pipe
     """
     dir = tempfile.mkdtemp()
     path = f"{dir}/{name}"
 
-    os.mkfifo(path)    
+    os.mkfifo(path)
     yield path
     
     os.unlink(path)
     os.rmdir(dir)
     
 
-def simplify_mesh(mesh_obj_text, simplify_ratio):
+def simplify_mesh(mesh_obj_stream, simplify_ratio):
     """
     Simplify the given mesh (in .obj text format) using the fq-mesh-simplify
     command-line tool, but use named pipes instead of files (to avoid using the hard disk).
     
     simplify_ratio: float
-    mesh_obj_text: bytes. The contents of an .obj file.
+    mesh_obj_text: bytes or BytesIO. The contents of an .obj file.
     """
-    assert isinstance(mesh_obj_text, bytes), "Must give mesh_obj_text as bytes, not str"
-
+    assert not isinstance(mesh_obj_stream, str), "mesh_obj_stream must be bytes or BytesIO"
+    if isinstance(mesh_obj_stream, bytes):
+        mesh_obj_stream = BytesIO(mesh_obj_stream)
+        
+    assert isinstance(mesh_obj_stream, BytesIO)
+    
     with temp_pipe('mesh.obj') as mesh_path, temp_pipe('simple.obj') as simple_path:
 
         # Use a thread to write the mesh input to a pipe,
         #  for the child process to stream in
         def write_mesh():
             with open(mesh_path, 'wb') as f:
-                f.write(mesh_obj_text)
+                copyfileobj(mesh_obj_stream, f)
         threading.Thread(target=write_mesh).start()
 
         # Start the child process    
@@ -90,18 +98,20 @@ def simplify_mesh(mesh_obj_text, simplify_ratio):
 
 def generate_obj(vertices_xyz, faces):
     """
-    Given lists of vertices and faces, write them to a buffer in .obj format.
+    Given lists of vertices and faces, write them to a BytesIO in .obj format.
     """
-    with BytesIO() as mesh_bytes:
-        mesh_bytes.write(b"# OBJ file\n")
-        for (x,y,z) in vertices_xyz:
-            mesh_bytes.write(f"v {x:.7f} {y:.7f} {z:.7f}\n".encode('utf-8'))
-        for (v1, v2, v3) in faces:
-            mesh_bytes.write(f"f {v1} {v2} {v3} \n".encode('utf-8'))
-        return mesh_bytes.getvalue()
+    mesh_bytes = BytesIO()
+    mesh_bytes.write(b"# OBJ file\n")
+    for (x,y,z) in vertices_xyz:
+        mesh_bytes.write(f"v {x:.7f} {y:.7f} {z:.7f}\n".encode('utf-8'))
+    for (v1, v2, v3) in faces:
+        mesh_bytes.write(f"f {v1} {v2} {v3} \n".encode('utf-8'))
+    
+    mesh_bytes.seek(0)
+    return mesh_bytes
 
 
-def mesh_from_array(volume_zyx, box_zyx, downsample_factor, simplify_ratio=None):
+def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=None):
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
@@ -111,7 +121,7 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor, simplify_ratio=None)
     simplify_ratio: How much to simplify the generated mesh (or None to skip simplification)
     """
     volume_xyz = volume_zyx.transpose()
-    box_xyz = box_zyx[:,::-1]
+    box_xyz = np.asarray(box_zyx)[:,::-1]
 
     vertices_xyz, normals, faces = march(volume_xyz, 3)  # 3 smoothing rounds
 
@@ -125,10 +135,12 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor, simplify_ratio=None)
     faces = faces[:, ::-1]
     faces += 1
 
-    mesh_bytes = generate_obj(vertices_xyz, faces)
-    
-    if simplify_ratio is not None:
-        mesh_bytes = simplify_mesh(mesh_bytes, simplify_ratio)
+    mesh_stream = generate_obj(vertices_xyz, faces)
+
+    if simplify_ratio is None:
+        mesh_bytes = mesh_stream.read()
+    else:
+        mesh_bytes = simplify_mesh(mesh_stream, simplify_ratio)
 
     return mesh_bytes
     
