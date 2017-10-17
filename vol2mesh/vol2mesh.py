@@ -1,21 +1,16 @@
-from marching_cubes import march
-import code
-import tifffile
-import numpy as np
-import glob
-from numpy import load
-import subprocess
-import threading
 import os
 import sys
-import pickle
-import platform
+import glob
 import tempfile
+import platform
 import threading
-from contextlib import contextmanager
-from functools import partial
+import subprocess
 from io import BytesIO
+from contextlib import contextmanager
 
+import numpy as np
+import tifffile
+from marching_cubes import march
 
 SCALEX = 1.0
 SCALEY = 1.0
@@ -60,7 +55,7 @@ def temp_pipe(name):
     os.rmdir(dir)
     
 
-def simplify_mesh(simplify_ratio, mesh_obj_text):
+def simplify_mesh(mesh_obj_text, simplify_ratio):
     """
     Simplify the given mesh (in .obj text format) using the fq-mesh-simplify
     command-line tool, but use named pipes instead of files (to avoid using the hard disk).
@@ -72,15 +67,19 @@ def simplify_mesh(simplify_ratio, mesh_obj_text):
 
     with temp_pipe('mesh.obj') as mesh_path, temp_pipe('simple.obj') as simple_path:
 
+        # Use a thread to write the mesh input to a pipe,
+        #  for the child process to stream in
         def write_mesh():
             with open(mesh_path, 'wb') as f:
                 f.write(mesh_obj_text)
         threading.Thread(target=write_mesh).start()
-    
+
+        # Start the child process    
         cmd = f'fq-mesh-simplify "{mesh_path}" "{simple_path}" {simplify_ratio}'
         proc = subprocess.Popen(cmd, shell=True)
 
         try:
+            # Stream the output of the child process from the pipe it is writing to
             with open(simple_path, 'rb') as f:
                 return f.read()
         finally:
@@ -106,7 +105,10 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor, simplify_ratio=None)
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
-    
+    volume_zyx: Binary volume (ZYX order)
+    box: Bounding box of the the volume data in global non-downsampled coordinates [(z0,y0,x0), (z1,y1,x1)]
+    downsample_factor: Factor by which the given volume has been downsampled from its original size
+    simplify_ratio: How much to simplify the generated mesh (or None to skip simplification)
     """
     volume_xyz = volume_zyx.transpose()
     box_xyz = box_zyx[:,::-1]
@@ -126,7 +128,7 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor, simplify_ratio=None)
     mesh_bytes = generate_obj(vertices_xyz, faces)
     
     if simplify_ratio is not None:
-        mesh_bytes = simplify_mesh(simplify_ratio, mesh_bytes)
+        mesh_bytes = simplify_mesh(mesh_bytes, simplify_ratio)
 
     return mesh_bytes
     
@@ -271,7 +273,6 @@ def main():
     labelsFolderPath = sys.argv[1]
 
     labelsPaths = sorted(glob.glob(labelsFolderPath +'*'))
-    #code.interact(local=locals())
     for ii,stack in enumerate(labelsPaths):
         if os.path.basename(stack) in alreadyDone:
             print("Detected already processed file. Skipping.")
@@ -279,7 +280,6 @@ def main():
             continue
         print("Starting " + stack)
         labelStack = tifffile.imread(stack)
-        #code.interact(local=locals())
         
         #labelStack = np.dstack(labelStack)
         print("Loaded data stack " + str(ii) + "/" + str(len(labelsPaths)))
