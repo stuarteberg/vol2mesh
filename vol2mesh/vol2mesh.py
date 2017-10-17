@@ -111,7 +111,7 @@ def generate_obj(vertices_xyz, faces):
     return mesh_bytes
 
 
-def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=None):
+def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=None, smoothing_rounds=3):
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
@@ -123,7 +123,7 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
     volume_xyz = volume_zyx.transpose()
     box_xyz = np.asarray(box_zyx)[:,::-1]
 
-    vertices_xyz, normals, faces = march(volume_xyz, 3)  # 3 smoothing rounds
+    vertices_xyz, _normals, faces = march(volume_xyz, smoothing_rounds)
 
     # Rescale and translate
     vertices_xyz[:] *= downsample_factor
