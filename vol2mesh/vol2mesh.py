@@ -10,6 +10,12 @@ import os
 import sys
 import pickle
 import platform
+import tempfile
+import threading
+from contextlib import contextmanager
+from functools import partial
+from io import BytesIO
+
 
 SCALEX = 1.0
 SCALEY = 1.0
@@ -34,6 +40,96 @@ def findBBDimensions(listOfPixels):
 	dz = maxzs - minzs
 
 	return [minxs, maxxs+1, minys, maxys+1, minzs, maxzs+1], [dx, dy, dz]
+
+@contextmanager
+def temp_pipe(name):
+    """
+    Context manager.
+    Create a temporary named pipe, with the given basename (do not include directory).
+    The pipe is deleted when the context is exited.
+    
+    yields: the full path to the named pipe
+    """
+    dir = tempfile.mkdtemp()
+    path = f"{dir}/{name}"
+
+    os.mkfifo(path)    
+    yield path
+    
+    os.unlink(path)
+    os.rmdir(dir)
+    
+
+def simplify_mesh(simplify_ratio, mesh_obj_text):
+    """
+    Simplify the given mesh (in .obj text format) using the fq-mesh-simplify
+    command-line tool, but use named pipes instead of files (to avoid using the hard disk).
+    
+    simplify_ratio: float
+    mesh_obj_text: bytes. The contents of an .obj file.
+    """
+    assert isinstance(mesh_obj_text, bytes), "Must give mesh_obj_text as bytes, not str"
+
+    with temp_pipe('mesh.obj') as mesh_path, temp_pipe('simple.obj') as simple_path:
+
+        def write_mesh():
+            with open(mesh_path, 'wb') as f:
+                f.write(mesh_obj_text)
+        threading.Thread(target=write_mesh).start()
+    
+        cmd = f'fq-mesh-simplify "{mesh_path}" "{simple_path}" {simplify_ratio}'
+        proc = subprocess.Popen(cmd, shell=True)
+
+        try:
+            with open(simple_path, 'rb') as f:
+                return f.read()
+        finally:
+            proc.wait()
+            if proc.returncode != 0:
+                raise RuntimeError(f"fq-mesh-simplify returned an error code: {proc.returncode}")
+
+
+def generate_obj(vertices_xyz, faces):
+    """
+    Given lists of vertices and faces, write them to a buffer in .obj format.
+    """
+    with BytesIO() as mesh_bytes:
+        mesh_bytes.write(b"# OBJ file\n")
+        for (x,y,z) in vertices_xyz:
+            mesh_bytes.write(f"v {x:.7f} {y:.7f} {z:.7f}\n".encode('utf-8'))
+        for (v1, v2, v3) in faces:
+            mesh_bytes.write(f"f {v1} {v2} {v3} \n".encode('utf-8'))
+        return mesh_bytes.getvalue()
+
+
+def mesh_from_array(volume_zyx, box_zyx, downsample_factor, simplify_ratio=None):
+    """
+    Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
+    
+    
+    """
+    volume_xyz = volume_zyx.transpose()
+    box_xyz = box_zyx[:,::-1]
+
+    vertices_xyz, normals, faces = march(volume_xyz, 3)  # 3 smoothing rounds
+
+    # Rescale and translate
+    vertices_xyz[:] *= downsample_factor
+    vertices_xyz[:] += box_xyz[0]
+    
+    # I don't understand why we write face vertices in reverse order...
+    # ...does marching_cubes give clockwise order instead of counter-clockwise?
+    # Is it because we passed a fortran-order array?
+    faces = faces[:, ::-1]
+    faces += 1
+
+    mesh_bytes = generate_obj(vertices_xyz, faces)
+    
+    if simplify_ratio is not None:
+        mesh_bytes = simplify_mesh(simplify_ratio, mesh_bytes)
+
+    return mesh_bytes
+    
 
 def calcMeshWithCrop(stackname, labelStack, location, simplify, tags):
 	print(str(tags['downsample_interval_x']))
@@ -65,14 +161,15 @@ def calcMeshWithCrop(stackname, labelStack, location, simplify, tags):
 		for face in faces:
 			f.write("f %d %d %d \n" % (face[2]+1, face[1]+1, face[0]+1))
 	print("Decimating Mesh...")
-	s = 'fq-mesh-simplify' + ' ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
 
-	# Assume fq-mesh-simplify is on the user's path
-	s = 'fq-mesh-simplify'
-	print(s)
-	subprocess.call(s, shell=True)
+    input_path = "./" + location + os.path.basename(stackname) +".obj"
+    output_path = "./" + location + os.path.basename(stackname) +".smooth.obj"
+    cmd = f'fq-mesh-simplify "{input_path}" "{output_path}" {simplify}'
 
-def calcMesh(stackname, labelStack, location, simplify):
+    print(cmd)
+    subprocess.call(cmd, shell=True)
+
+def calcMesh(stackname, labelStack, location, simplify_ratio):
 	tags = getTagDictionary(stackname)
 	downsampleFactor = float(tags['downsample_interval_x'])
 	xOffset = float(tags['dvid_offset_x'])
@@ -95,9 +192,13 @@ def calcMesh(stackname, labelStack, location, simplify):
 		f.write(''.join(faceStrings))
 	print("Decimating Mesh...")
 
-	s = 'fq-mesh-simplify' + ' ./' + location + os.path.basename(stackname) +".obj ./" + location + os.path.basename(stackname) +".smooth.obj " + str(simplify)
-	print(s)
-	subprocess.call(s, shell=True)
+    input_path = "./" + location + os.path.basename(stackname) +".obj"
+    output_path = "./" + location + os.path.basename(stackname) +".smooth.obj"
+    cmd = f'fq-mesh-simplify "{input_path}" "{output_path}" {simplify_ratio}'
+    
+    print(cmd)
+    subprocess.call(cmd, shell=True)
+
 
 def calcMeshWithOffsets(stackname, labelStack, location, simplify):
 	tags = getTagDictionary(stackname)
