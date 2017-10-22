@@ -4,14 +4,29 @@ import glob
 import tempfile
 import threading
 import subprocess
-from io import BytesIO, RawIOBase
-from shutil import copyfileobj
+from io import BytesIO
+from shutil import copyfileobj, rmtree
 from contextlib import contextmanager
 
 import numpy as np
 import tifffile
 from marching_cubes import march
 
+class AutoDeleteDir:
+    def __init__(self, dirpath):
+        self.dirpath = dirpath
+    
+    def __del__(self):
+        rmtree(self.dirpath)
+
+    def __str__(self):
+        return self.dirpath
+    
+@contextmanager
+def tempdir():
+    d = tempfile.mkdtemp()
+    yield d
+    rmtree(d)
 
 SCALEX = 1.0
 SCALEY = 1.0
@@ -147,7 +162,7 @@ def generate_obj(vertices_xyz, faces):
     return mesh_bytes
 
 
-def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=None, smoothing_rounds=3):
+def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=None, smoothing_rounds=3, output_format='obj'):
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
@@ -156,7 +171,10 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
     downsample_factor: Factor by which the given volume has been downsampled from its original size
     simplify_ratio: How much to simplify the generated mesh (or None to skip simplification)
     smoothing_rounds: Passed to marching_cubes.march()
+    output_format: Either 'drc' or 'obj'
     """
+    assert output_format in ('obj', 'drc'), \
+        f"Unknown output format: {output_format}.  Expected one of ('obj', 'drc')"
     volume_xyz = volume_zyx.transpose()
     box_xyz = np.asarray(box_zyx)[:,::-1]
 
@@ -172,21 +190,45 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
     faces = faces[:, ::-1]
     faces += 1
 
-    orig_mesh_stream = generate_obj(vertices_xyz, faces)
+    mesh_stream = generate_obj(vertices_xyz, faces)
+        
+    child_processes = []
 
-    if not simplify_ratio:
-        return orig_mesh_stream.read()
+    try:
+        if simplify_ratio is not None:
+            simplify_input_pipe = TemporaryNamedPipe('input.obj')
+            simplify_input_pipe.start_writing_stream(mesh_stream)
+        
+            simplify_output_pipe = TemporaryNamedPipe('output.obj')
+        
+            cmd = f'fq-mesh-simplify {simplify_input_pipe.path} {simplify_output_pipe.path} {simplify_ratio}'
+            child_processes.append( (cmd, subprocess.Popen(cmd, shell=True) ) )
+            mesh_stream = simplify_output_pipe.open_stream('rb')
 
-    orig_mesh_pipe = TemporaryNamedPipe('original_mesh.obj')
-    simplified_pipe = TemporaryNamedPipe('simlified_mesh.obj')
-    orig_mesh_pipe.start_writing_stream(orig_mesh_stream)
-
-    cmd_format = f'fq-mesh-simplify {orig_mesh_pipe.path} {simplified_pipe.path} {simplify_ratio}'
-    simplify_proc = subprocess.Popen(cmd_format, shell=True)
-    simplified_bytes = simplified_pipe.open_stream('rb').read()
-    simplify_proc.wait()
-    return simplified_bytes
+        if output_format == 'drc':
+            # Sadly, draco is incapable of reading from non-seekable inputs.
+            # It requires an actual input file.
+            # But at least we can use a pipe for the output...
+            mesh_dir = AutoDeleteDir(tempfile.mkdtemp())
+            mesh_path = f'{mesh_dir}/mesh.obj'
+            with open(mesh_path, 'wb') as mesh_file:
+                copyfileobj(mesh_stream, mesh_file)
+            draco_output_pipe = TemporaryNamedPipe('output.drc')
     
+            cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {draco_output_pipe.path}'
+            child_processes.append( (cmd, subprocess.Popen(cmd, shell=True) ) )
+            mesh_stream = draco_output_pipe.open_stream('rb')
+
+        return mesh_stream.read()
+
+    finally:
+        # Explicitly wait() for the child processes
+        # (avoids a warning from subprocess.Popen.__del__)
+        for cmd, proc in child_processes:
+            proc.wait(timeout=1.0)
+            if proc.returncode != 0:
+                raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
+                                   f"Command was: {cmd}")
 
 def calcMeshWithCrop(stackname, labelStack, location, simplify, tags):
     print(str(tags['downsample_interval_x']))
