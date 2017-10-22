@@ -1,11 +1,10 @@
 import unittest
-from io import BytesIO
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
 import threading
 import subprocess
-from vol2mesh.vol2mesh import mesh_from_array, TemporaryNamedPipe, SubprocessWithPipedArgs
+from vol2mesh.vol2mesh import mesh_from_array, TemporaryNamedPipe
 
 class Test_mesh_from_array(unittest.TestCase):
      
@@ -60,42 +59,6 @@ class TestTemporaryNamedPipe(unittest.TestCase):
         text = pipe.open_stream('r').read()
         assert text == "Hello"
 
-class TestSubprocessWithPipedArgs(unittest.TestCase):
-    
-    def test_1(self):
-        original = b"this is some text"
-        input_stream = BytesIO(original) 
-         
-        cmd_format = ''' python -c "open('{output_path}', 'w').write( open('{input_path}', 'r').read().upper() )" '''
-        proc = SubprocessWithPipedArgs(input_stream, cmd_format)
-         
-        # Convenience function: just read it right away.
-        processed = proc.read()
-        assert processed == original.upper()
- 
-    def test_pipelined_streams(self):
-        original = b"this is some text"
-        input_stream = BytesIO(original) 
-         
-        cmd_upper = ''' python -c "open('{output_path}', 'w').write( open('{input_path}', 'r').read().upper() )" '''
-        proc_upper = SubprocessWithPipedArgs(input_stream, cmd_upper)
- 
-        cmd_replace = ''' python -c "open('{output_path}', 'w').write( open('{input_path}', 'r').read().replace('TEXT', 'STUFF') )" '''
-        proc_replace = SubprocessWithPipedArgs(proc_upper.output_pipe.open_stream('rb'), cmd_replace)
-         
-        output_text = proc_replace.output_pipe.open_stream('rb').read()
-        assert output_text == original.upper().replace(b'TEXT', b'STUFF')
-        assert output_text == b'THIS IS SOME STUFF'
-         
-        proc_upper.wait()
-        proc_replace.wait()
-
-    def test_example(self):
-        input_stream = BytesIO(b"int main(){ return 0;}")
-        cmd_format = "gcc -o {output_path} {input_path}"
-        proc = SubprocessWithPipedArgs(input_stream, cmd_format, input_name='main.c', output_name='main.out')
-        compiled_binary = proc.output_pipe.open_stream('rb').read()
-        proc.wait()
 
 if __name__ == "__main__":
     unittest.main()
