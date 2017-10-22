@@ -4,7 +4,7 @@ from scipy.ndimage import distance_transform_edt
 
 import threading
 import subprocess
-from vol2mesh.vol2mesh import mesh_from_array, TemporaryNamedPipe
+from vol2mesh.mesh_from_array import mesh_from_array, TemporaryNamedPipe
 
 class Test_mesh_from_array(unittest.TestCase):
      
