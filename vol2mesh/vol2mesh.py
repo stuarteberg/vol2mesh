@@ -60,6 +60,7 @@ class TemporaryNamedPipe:
     
         os.mkfifo(self.path)
         self.state = 'pipe_exists'
+        self.writer_thread = None
     
     def cleanup(self):
         if self.path:
@@ -75,6 +76,14 @@ class TemporaryNamedPipe:
     
     def __exit__(self, *args):
         self.cleanup()
+
+    def start_writing_stream(self, stream):
+        def write_input():
+            with open(self.path, 'wb') as f:
+                copyfileobj(stream, f)
+        self.writer_thread = threading.Thread(target=write_input)
+        self.writer_thread.start()
+        return self.writer_thread
 
     def open_stream(self, mode):
         return TemporaryNamedPipe.Stream(mode, self)
@@ -297,23 +306,20 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
     faces = faces[:, ::-1]
     faces += 1
 
-    mesh_stream = generate_obj(vertices_xyz, faces)
+    orig_mesh_stream = generate_obj(vertices_xyz, faces)
 
-    subprocs = [] 
-    if simplify_ratio is not None:
-        mesh_stream, proc = simplify_mesh_to_stream(mesh_stream, simplify_ratio)
-        subprocs.append(proc)
+    if not simplify_ratio:
+        return orig_mesh_stream.read()
 
-    if simplify_ratio is not None:
-        mesh_stream, proc = simplify_mesh_to_stream(mesh_stream, simplify_ratio)
-        subprocs.append(proc)
+    orig_mesh_pipe = TemporaryNamedPipe('original_mesh.obj')
+    simplified_pipe = TemporaryNamedPipe('simlified_mesh.obj')
+    orig_mesh_pipe.start_writing_stream(orig_mesh_stream)
 
-    mesh_bytes = mesh_stream.read()
-    
-    for proc in subprocs:
-        proc.wait()
-
-    return mesh_bytes
+    cmd_format = f'fq-mesh-simplify {orig_mesh_pipe.path} {simplified_pipe.path} {simplify_ratio}'
+    simplify_proc = subprocess.Popen(cmd_format, shell=True)
+    simplified_bytes = simplified_pipe.open_stream('rb').read()
+    simplify_proc.wait()
+    return simplified_bytes
     
 
 def calcMeshWithCrop(stackname, labelStack, location, simplify, tags):
