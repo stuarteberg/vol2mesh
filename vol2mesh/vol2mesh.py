@@ -2,10 +2,9 @@ import os
 import sys
 import glob
 import tempfile
-import platform
 import threading
 import subprocess
-from io import BytesIO
+from io import BytesIO, RawIOBase
 from shutil import copyfileobj
 from contextlib import contextmanager
 
@@ -38,26 +37,196 @@ def findBBDimensions(listOfPixels):
 
     return [minxs, maxxs+1, minys, maxys+1, minzs, maxzs+1], [dx, dy, dz]
 
-@contextmanager
-def temp_pipe(name):
+class TemporaryNamedPipe:
     """
-    Context manager.
-    Create a temporary named pipe, with the given name.
-    The pipe is deleted when the context is exited.
-    
-    name: An arbitrary basename for the pipe.  Should not be a full path.
-    
-    yields: the full path to the named pipe
-    """
-    dir = tempfile.mkdtemp()
-    path = f"{dir}/{name}"
+    Represents a unix 'named pipe', a.k.a. fifo
+    The pipe is created in a temporary directory and deleted upon cleanup() (or __exit__).
 
-    os.mkfifo(path)
-    yield path
+    Example:
+
+        with TemporaryNamedPipe() as pipe:
+            def write_hello():
+                with pipe.open_stream('r') as f:
+                    f.write("Hello")
+            threading.Thread(target=write_hello).start()
+            
+            subprocess.call(f'cat {pipe.path}')
+    """
+    def __init__(self, basename='temporary-pipe.bin'):
+        self.state = 'uninitialized'
+        assert '/' not in basename
+        self.tmpdir = tempfile.mkdtemp()
+        self.path = f"{self.tmpdir}/{basename}"
     
-    os.unlink(path)
-    os.rmdir(dir)
+        os.mkfifo(self.path)
+        self.state = 'pipe_exists'
     
+    def cleanup(self):
+        if self.path:
+            os.unlink(self.path)
+            os.rmdir(self.tmpdir)
+            self.path = None
+
+    def __del__(self):
+        self.cleanup()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        self.cleanup()
+
+    def open_stream(self, mode):
+        return TemporaryNamedPipe.Stream(mode, self)
+    
+    class Stream:
+        """
+        An open stream to a parent TemporaryNamedPipe.
+        Retains a reference to the parent so the pipe isn't deleted before stream is closed.
+        """
+        def __init__(self, mode, parent_pipe):
+            self._parent_pipe = parent_pipe
+            self._file = open(parent_pipe.path, mode)
+            self.closed = False
+            self.mode = mode
+            self.name = self._file.name
+
+        def close(self):
+            if self._parent_pipe:
+                self._file.close()
+                self._parent_pipe = None # Release parent pipe
+                self.closed = True
+
+        def __del__(self):
+            self.close()
+            
+        def __enter__(self):
+            return self
+        
+        def __exit__(self, *args):
+            self.close()
+
+        def fileno(self, *args, **kwargs): return self._file.fileno(*args, **kwargs)
+        def flush(self, *args, **kwargs): return self._file.flush(*args, **kwargs)
+        def isatty(self, *args, **kwargs): return self._file.isatty(*args, **kwargs)
+        def readable(self, *args, **kwargs): return self._file.readable(*args, **kwargs)
+        def readline(self, *args, **kwargs): return self._file.readline(*args, **kwargs)
+        def readlines(self, *args, **kwargs): return self._file.readlines(*args, **kwargs)
+        def seek(self, *args, **kwargs): return self._file.seek(*args, **kwargs)
+        def tell(self, *args, **kwargs): return self._file.tell(*args, **kwargs)
+        def truncate(self, *args, **kwargs): return self._file.truncate(*args, **kwargs)
+        def writable(self, *args, **kwargs): return self._file.writable(*args, **kwargs)
+
+        def read(self, *args, **kwargs): return self._file.read(*args, **kwargs)
+        def readall(self, *args, **kwargs): return self._file.readall(*args, **kwargs)
+        def readinto(self, *args, **kwargs): return self._file.readinto(*args, **kwargs)
+        def write(self, *args, **kwargs): return self._file.write(*args, **kwargs)
+
+
+class SubprocessWithPipedArgs:
+    """
+    A utility class for dealing with command-line tools that deal
+    with input/output files instead of stdin and stdout.
+    
+    This utility class allows us to use streams with such command-line
+    tools instead of files, avoiding I/O to the hard disk.
+    
+    Example:
+    
+        input_stream = BytesIO(b"int main(){ return 0;}")
+
+        cmd_format = "gcc -o {output_path} {input_path}"
+        proc = SubprocessWithPipedArgs(input_stream, cmd_format, input_name='main.c', output_name='main.out')
+        compiled_binary = proc.output_pipe.open_stream('rb').read()
+
+        proc.wait() # optional; make sure process is completed
+        
+    """
+    
+    def __init__(self, input_stream, command_format, input_name='input.bin', output_name='output.bin' ):
+        """
+        input_stream: Binary stream (e.g. BytesIO), or bytes
+        command_format: The command-line to execute, with placeholders for {input_path} and {output_path}
+
+        input_name, output_name: Optionally specify the basename of the named pipes
+                                 that will be used to provide the input/output to the command.
+                                 Useful if the command expects to see a particular file extension.
+        """
+        assert not isinstance(input_stream, str), "input_stream must be bytes or BytesIO"
+        if isinstance(input_stream, bytes):
+            input_stream = BytesIO(input_stream)
+
+        self.input_stream = input_stream
+        self.command_format = command_format
+
+        self.input_name = input_name
+        self.output_name = output_name
+
+        self.input_pipe = TemporaryNamedPipe(input_name)
+        self.output_pipe = TemporaryNamedPipe(output_name)
+
+        self.writer_thread = None
+        self.child_process = None
+        
+        self.started = False
+
+        # Start immediately
+        self._start()
+    
+    def _start(self):
+        # Start a thread to push data into the pipe
+        def write_input():
+            with open(self.input_pipe.path, 'wb') as f:
+                copyfileobj(self.input_stream, f)
+        self.writer_thread = threading.Thread(target=write_input)
+        self.writer_thread.start()
+    
+        cmd = self.command_format.format( input_path=self.input_pipe.path,
+                                          output_path=self.output_pipe.path )
+
+            # Start the child process
+        self.child_process = subprocess.Popen(cmd, shell=True)
+        self.started = True
+        
+        # Caller can now pull data from the pipe by opening this path as a file,
+        # or by calling read()
+        return self.output_pipe
+
+    def read(self):
+        """
+        Convenience function for reading the process output immediately,
+        instead of forwarding the output_pipe to a different process.
+        """
+        assert self.child_process, "Pipe has already been read!"
+        try:
+            return self.output_pipe.open_stream('rb').read()
+        finally:
+            self.wait()
+
+    def wait(self):
+        if not self.child_process:
+            return
+        self.child_process.wait(1.0)
+        if self.writer_thread:
+            self.writer_thread.join(1.0)
+
+        # Don't close pipes here: 
+        # they are eventually closed automatically via RAII
+        #self.input_pipe.cleanup()
+        #self.output_pipe.cleanup()
+        
+        returncode = self.child_process.returncode
+        if returncode != 0:
+            raise RuntimeError(f"{self.command_format.split()[0]} returned an error code: {returncode}")
+
+        self.child_process = None
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        self.wait()
+
 
 def simplify_mesh(mesh_obj_stream, simplify_ratio):
     """
@@ -67,33 +236,25 @@ def simplify_mesh(mesh_obj_stream, simplify_ratio):
     simplify_ratio: float
     mesh_obj_text: bytes or BytesIO. The contents of an .obj file.
     """
-    assert not isinstance(mesh_obj_stream, str), "mesh_obj_stream must be bytes or BytesIO"
-    if isinstance(mesh_obj_stream, bytes):
-        mesh_obj_stream = BytesIO(mesh_obj_stream)
-        
-    assert isinstance(mesh_obj_stream, BytesIO)
+    cmd_format = f'fq-mesh-simplify {{input_path}} {{output_path}} {simplify_ratio}'
+    with SubprocessWithPipedArgs(mesh_obj_stream, cmd_format, 'input.obj', 'output.obj') as simplified_path:
+        with open(simplified_path, 'rb') as simple_f:
+            mesh_bytes = simple_f.read()
+            return mesh_bytes
+
+
+def simplify_mesh_to_stream(mesh_obj_stream, simplify_ratio):
+    """
+    Simplify the given mesh (in .obj text format) using the fq-mesh-simplify
+    command-line tool, but use named pipes instead of files (to avoid using the hard disk).
     
-    with temp_pipe('mesh.obj') as mesh_path, temp_pipe('simple.obj') as simple_path:
-
-        # Use a thread to write the mesh input to a pipe,
-        #  for the child process to stream in
-        def write_mesh():
-            with open(mesh_path, 'wb') as f:
-                copyfileobj(mesh_obj_stream, f)
-        threading.Thread(target=write_mesh).start()
-
-        # Start the child process    
-        cmd = f'fq-mesh-simplify "{mesh_path}" "{simple_path}" {simplify_ratio}'
-        proc = subprocess.Popen(cmd, shell=True)
-
-        try:
-            # Stream the output of the child process from the pipe it is writing to
-            with open(simple_path, 'rb') as f:
-                return f.read()
-        finally:
-            proc.wait()
-            if proc.returncode != 0:
-                raise RuntimeError(f"fq-mesh-simplify returned an error code: {proc.returncode}")
+    simplify_ratio: float
+    mesh_obj_text: bytes or BytesIO. The contents of an .obj file.
+    """
+    cmd_format = f'fq-mesh-simplify {{input_path}} {{output_path}} {simplify_ratio}'
+    proc = SubprocessWithPipedArgs(mesh_obj_stream, cmd_format, 'input.obj', 'output.obj')
+    simplified_stream = proc.output_pipe.open_stream('rb')
+    return simplified_stream, proc
 
 
 def generate_obj(vertices_xyz, faces):
@@ -119,6 +280,7 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
     box: Bounding box of the the volume data in global non-downsampled coordinates [(z0,y0,x0), (z1,y1,x1)]
     downsample_factor: Factor by which the given volume has been downsampled from its original size
     simplify_ratio: How much to simplify the generated mesh (or None to skip simplification)
+    smoothing_rounds: Passed to marching_cubes.march()
     """
     volume_xyz = volume_zyx.transpose()
     box_xyz = np.asarray(box_zyx)[:,::-1]
@@ -137,10 +299,19 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
 
     mesh_stream = generate_obj(vertices_xyz, faces)
 
-    if simplify_ratio is None:
-        mesh_bytes = mesh_stream.read()
-    else:
-        mesh_bytes = simplify_mesh(mesh_stream, simplify_ratio)
+    subprocs = [] 
+    if simplify_ratio is not None:
+        mesh_stream, proc = simplify_mesh_to_stream(mesh_stream, simplify_ratio)
+        subprocs.append(proc)
+
+    if simplify_ratio is not None:
+        mesh_stream, proc = simplify_mesh_to_stream(mesh_stream, simplify_ratio)
+        subprocs.append(proc)
+
+    mesh_bytes = mesh_stream.read()
+    
+    for proc in subprocs:
+        proc.wait()
 
     return mesh_bytes
     
