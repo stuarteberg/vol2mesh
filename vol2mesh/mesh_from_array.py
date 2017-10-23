@@ -141,6 +141,10 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
     """
     assert output_format in ('obj', 'drc'), \
         f"Unknown output format: {output_format}.  Expected one of ('obj', 'drc')"
+
+    if simplify_ratio == 1.0:
+        simplify_ratio = None
+
     volume_xyz = volume_zyx.transpose()
     box_xyz = np.asarray(box_zyx)[:,::-1]
 
