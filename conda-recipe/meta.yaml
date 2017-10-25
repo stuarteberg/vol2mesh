@@ -31,7 +31,6 @@ requirements:
 test:
   imports:
     - vol2mesh
-    - vol2mesh.vol2mesh
 
   requires:
     - scipy

@@ -1,1 +1,2 @@
-python -m unittest vol2mesh.tests.test_mesh_from_array
+#!/bin/bash
+python -m unittest discover -s vol2mesh.tests

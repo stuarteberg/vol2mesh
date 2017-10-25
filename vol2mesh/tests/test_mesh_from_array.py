@@ -2,9 +2,7 @@ import unittest
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
-import threading
-import subprocess
-from vol2mesh.mesh_from_array import mesh_from_array, TemporaryNamedPipe
+from vol2mesh import mesh_from_array
 
 class Test_mesh_from_array(unittest.TestCase):
      
@@ -45,29 +43,5 @@ class Test_mesh_from_array(unittest.TestCase):
         mesh_simple_compressed = mesh_from_array( binary_vol, box, 1, simplify_ratio=0.2, smoothing_rounds=0, output_format='drc' )
         assert len(mesh_simple_compressed) < len(mesh_compressed), "Draco-encoded mesh should be smaller"
         
- 
-class TestTemporaryNamedPipe(unittest.TestCase):
-    def test_example(self):
-        with TemporaryNamedPipe() as pipe:
-            def write_hello():
-                with pipe.open_stream('w') as f:
-                    f.write("Hello")
-            threading.Thread(target=write_hello).start()
-              
-            cat_output = subprocess.check_output(f'cat {pipe.path}', shell=True)
-            assert cat_output == b"Hello"
- 
-    def test_read_from_unnamed_stream(self):
-        pipe = TemporaryNamedPipe()
-        def write_hello():
-            with pipe.open_stream('w') as f:
-                f.write("Hello")
-        threading.Thread(target=write_hello).start()
-  
-        # The first cut of TemporaryNamedPipe.Stream() failed this test.
-        text = pipe.open_stream('r').read()
-        assert text == "Hello"
-
-
 if __name__ == "__main__":
     unittest.main()
