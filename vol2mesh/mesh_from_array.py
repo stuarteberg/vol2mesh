@@ -23,7 +23,7 @@ def generate_obj(vertices_xyz, faces):
     return mesh_bytes
 
 
-def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=None, smoothing_rounds=3, output_format='obj'):
+def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, smoothing_rounds=3, output_format='obj'):
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
@@ -32,8 +32,8 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
     
     volume_zyx:
         Binary volume (ZYX order)
-    box:
-        Bounding box of the the volume data in global non-downsampled coordinates [(z0,y0,x0), (z1,y1,x1)]
+    global_offset_zyx:
+        Offset of the volume start corner in global non-downsampled coordinates: (z0,y0,x0)
     downsample_factor:
         Factor by which the given volume has been downsampled from its original size
     simplify_ratio:
@@ -50,18 +50,18 @@ def mesh_from_array(volume_zyx, box_zyx, downsample_factor=1, simplify_ratio=Non
         simplify_ratio = None
 
     volume_xyz = volume_zyx.transpose()
-    box_xyz = np.asarray(box_zyx)[:,::-1]
+    global_offset_xyz = np.asarray(global_offset_zyx)[::-1]
 
-    vertices_xyz, _normals, faces = march(volume_xyz, smoothing_rounds)
+    vertices_xyz, normals, faces = march(volume_xyz, smoothing_rounds)
 
     # Rescale and translate
     vertices_xyz[:] *= downsample_factor
-    vertices_xyz[:] += box_xyz[0]
+    vertices_xyz[:] += global_offset_xyz
     
     # I don't understand why we write face vertices in reverse order...
     # ...does marching_cubes give clockwise order instead of counter-clockwise?
     # Is it because we passed a fortran-order array?
-    faces = faces[:, ::-1]
+    #faces = faces[:, ::-1]
     faces += 1
 
     mesh_stream = generate_obj(vertices_xyz, faces)
