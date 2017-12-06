@@ -24,7 +24,7 @@ requirements:
 
   run:
     - python 3.6*
-    - marching_cubes
+    - scikit-image >=0.13
     - fq-mesh-simplification
     - tifffile
     - draco

@@ -4,18 +4,23 @@ from io import BytesIO
 from shutil import copyfileobj
 
 import numpy as np
-from marching_cubes import march
+from skimage.measure import marching_cubes_lewiner
 
 from .io_utils import TemporaryNamedPipe, AutoDeleteDir
 
-def generate_obj(vertices_xyz, faces):
+def generate_obj(vertices_xyz, faces, normals_xyz=[]):
     """
     Given lists of vertices and faces, write them to a new BytesIO stream in .obj format.
     """
     mesh_bytes = BytesIO()
     mesh_bytes.write(b"# OBJ file\n")
+
     for (x,y,z) in vertices_xyz:
         mesh_bytes.write(f"v {x:.7f} {y:.7f} {z:.7f}\n".encode('utf-8'))
+
+    for (x,y,z) in normals_xyz:
+        mesh_bytes.write(f"vn {x:.7f} {y:.7f} {z:.7f}\n".encode('utf-8'))
+
     for (v1, v2, v3) in faces:
         mesh_bytes.write(f"f {v1} {v2} {v3} \n".encode('utf-8'))
     
@@ -23,7 +28,7 @@ def generate_obj(vertices_xyz, faces):
     return mesh_bytes
 
 
-def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, smoothing_rounds=3, output_format='obj'):
+def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, step_size=1, output_format='obj'):
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
@@ -38,10 +43,13 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
         Factor by which the given volume has been downsampled from its original size
     simplify_ratio:
         How much to simplify the generated mesh (or None to skip simplification)
-    smoothing_rounds:
-        Passed to marching_cubes.march()
+    step_size:
+        Passed to skimage.measure.marching_cubes_lewiner().
+        Larger values result in coarser results via faster computation.
     output_format:
         Either 'drc' or 'obj'
+    method:
+        Either 'ilastik' or 'skimage'
     """
     assert output_format in ('obj', 'drc'), \
         f"Unknown output format: {output_format}.  Expected one of ('obj', 'drc')"
@@ -49,22 +57,20 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
     if simplify_ratio == 1.0:
         simplify_ratio = None
 
-    volume_xyz = volume_zyx.transpose()
-    global_offset_xyz = np.asarray(global_offset_zyx)[::-1]
-
-    vertices_xyz, normals, faces = march(volume_xyz, smoothing_rounds)
+    vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(volume_zyx, 0.5, step_size=step_size)
 
     # Rescale and translate
-    vertices_xyz[:] *= downsample_factor
-    vertices_xyz[:] += global_offset_xyz
+    vertices_zyx[:] *= downsample_factor
+    vertices_zyx[:] += global_offset_zyx
+
+    # OBJ format: XYZ order
+    vertices_xyz = vertices_zyx[:, ::-1]
+    normals_xyz = normals_zyx[:, ::-1]
     
-    # I don't understand why we write face vertices in reverse order...
-    # ...does marching_cubes give clockwise order instead of counter-clockwise?
-    # Is it because we passed a fortran-order array?
-    #faces = faces[:, ::-1]
+    # OBJ format: Faces start at index 1 (not 0)
     faces += 1
 
-    mesh_stream = generate_obj(vertices_xyz, faces)
+    mesh_stream = generate_obj(vertices_xyz, faces, normals_xyz)
         
     child_processes = []
 
