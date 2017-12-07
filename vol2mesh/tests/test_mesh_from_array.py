@@ -50,6 +50,16 @@ class Test_mesh_from_array(unittest.TestCase):
         # Running both simplification and draco: even smaller 
         mesh_simple_compressed = mesh_from_array( binary_vol, box[0], 1, simplify_ratio=0.2, step_size=1, output_format='drc' )
         assert len(mesh_simple_compressed) < len(mesh_compressed), "Draco-encoded mesh should be smaller"
+
+
+    def test_tiny_array(self):
+        """
+        The scikit-image marching cubes function complains if we give it volumes smaller than 2x2x2.
+        But we support volumes down to 1x1x1...
+        """
+        one_voxel = np.ones((1,1,1), np.uint8)
+        tiny_mesh = mesh_from_array( one_voxel, (0,0,0), 1, simplify_ratio=None, step_size=1 )
+        assert len(tiny_mesh.decode().splitlines()) > 3
         
 if __name__ == "__main__":
     unittest.main()

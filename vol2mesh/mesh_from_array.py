@@ -57,6 +57,10 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
     if simplify_ratio == 1.0:
         simplify_ratio = None
 
+    if (np.array(volume_zyx.shape) < 2).any():
+        # Append 1 px to every axis
+        volume_zyx = np.pad(volume_zyx, ((0,1),(0,1),(0,1)), 'constant', constant_values=0)
+    
     vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(volume_zyx, 0.5, step_size=step_size)
 
     # Rescale and translate
