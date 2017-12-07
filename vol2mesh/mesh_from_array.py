@@ -57,11 +57,17 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
     if simplify_ratio == 1.0:
         simplify_ratio = None
 
-    if (np.array(volume_zyx.shape) < 2).any():
-        # Append 1 px to every axis
-        volume_zyx = np.pad(volume_zyx, ((0,1),(0,1),(0,1)), 'constant', constant_values=0)
-    
-    vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(volume_zyx, 0.5, step_size=step_size)
+    try:    
+        vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(volume_zyx, 0.5, step_size=step_size)
+    except ValueError:
+        if volume_zyx.all():
+            # To consider:
+            # Alternatively, we could return an empty .obj file in this case,
+            # but for now it seems better to force the caller to decide what she wants to do.
+            raise ValueError("Can't create mesh from completely solid volume.\n"
+                             "(Volume edges are not normally converted to mesh faces, so the mesh would be empty.)\n"
+                             "Try padding the input with an empty halo.")
+        raise
 
     # Rescale and translate
     vertices_zyx[:] *= downsample_factor

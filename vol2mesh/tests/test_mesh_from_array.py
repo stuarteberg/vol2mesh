@@ -54,12 +54,23 @@ class Test_mesh_from_array(unittest.TestCase):
 
     def test_tiny_array(self):
         """
-        The scikit-image marching cubes function complains if we give it volumes smaller than 2x2x2.
-        But we support volumes down to 1x1x1...
+        Tiny arrays can't be meshified. An exception is raised.
         """
         one_voxel = np.ones((1,1,1), np.uint8)
-        tiny_mesh = mesh_from_array( one_voxel, (0,0,0), 1, simplify_ratio=None, step_size=1 )
-        assert len(tiny_mesh.decode().splitlines()) > 3
-        
+        try:
+            _tiny_mesh = mesh_from_array( one_voxel, (0,0,0), 1, simplify_ratio=None, step_size=1 )
+        except ValueError:
+            pass
+
+    def test_solid_array(self):
+        """
+        Solid volumes can't be meshified. An exception is raised.
+        """
+        solid_volume = np.ones((3,3,3), np.uint8)
+        try:
+            _mesh = mesh_from_array( solid_volume, (0,0,0), 1, simplify_ratio=None, step_size=1 )
+        except ValueError:
+            pass
+
 if __name__ == "__main__":
     unittest.main()
