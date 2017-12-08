@@ -72,5 +72,15 @@ class Test_mesh_from_array(unittest.TestCase):
         except ValueError:
             pass
 
+    def test_simplify_single_padded_voxel(self):
+        """
+        The simplification tool rejects mesh/ratio combinations
+        that would result in meshes that are very small.
+        In those cases, the mesh is just left unsimplified.
+        """
+        one_padded_voxel = np.zeros((3,3,3), np.uint8)
+        one_padded_voxel[1,1,1] = 1
+        _tiny_mesh = mesh_from_array( one_padded_voxel, (0,0,0), 1, simplify_ratio=0.2, step_size=1, output_format='drc' )
+
 if __name__ == "__main__":
     unittest.main()

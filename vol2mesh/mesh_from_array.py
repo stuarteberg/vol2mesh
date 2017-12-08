@@ -85,7 +85,10 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
     child_processes = []
 
     try:
-        if simplify_ratio is not None:
+        # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).
+        # We have to check for this in advance because we can't gracefully handle the error.
+        # https://github.com/neurolabusc/Fast-Quadric-Mesh-Simplification-Pascal-/blob/master/c_code/Main.cpp
+        if simplify_ratio is not None and len(faces) * simplify_ratio > 4:
             simplify_input_pipe = TemporaryNamedPipe('input.obj')
             simplify_input_pipe.start_writing_stream(mesh_stream)
         
