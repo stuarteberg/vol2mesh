@@ -28,7 +28,7 @@ def generate_obj(vertices_xyz, faces, normals_xyz=[]):
     return mesh_bytes
 
 
-def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, step_size=1, output_format='obj'):
+def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, step_size=1, output_format='obj', return_vertex_count=False):
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
@@ -112,7 +112,13 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
             child_processes.append( (cmd, subprocess.Popen(cmd, shell=True) ) )
             mesh_stream = draco_output_pipe.open_stream('rb')
 
-        return mesh_stream.read()
+        mesh_bytes = mesh_stream.read()
+        
+        if return_vertex_count:
+            # For now, this is hidden behind a flag for backwards compatibility
+            return mesh_bytes, len(vertices_zyx)
+        else:
+            return mesh_bytes
 
     finally:
         # Explicitly wait() for the child processes
