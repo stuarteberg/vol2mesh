@@ -50,6 +50,10 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
         Either 'drc' or 'obj'
     method:
         Either 'ilastik' or 'skimage'
+    return_vertex_count:
+        If True, also return the APPROXIMATE vertex count
+        (We don't count the vertexes after decimation; we assume that decimation
+        was able to faithfully apply the requested simplify_ratio.)
     """
     assert output_format in ('obj', 'drc'), \
         f"Unknown output format: {output_format}.  Expected one of ('obj', 'drc')"
@@ -114,11 +118,14 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
 
         mesh_bytes = mesh_stream.read()
         
-        if return_vertex_count:
-            # For now, this is hidden behind a flag for backwards compatibility
+        # For now, this is hidden behind a flag for backwards compatibility
+        if not return_vertex_count:
+            return mesh_bytes
+
+        if simplify_ratio is None:
             return mesh_bytes, len(vertices_zyx)
         else:
-            return mesh_bytes
+            return mesh_bytes, int( simplify_ratio * len(vertices_zyx) )
 
     finally:
         # Explicitly wait() for the child processes
