@@ -28,6 +28,8 @@ requirements:
     - fq-mesh-simplification
     - tifffile
     - draco
+    - numpy
+    - numba
 
 test:
   imports:

@@ -6,26 +6,10 @@ from shutil import copyfileobj
 import numpy as np
 from skimage.measure import marching_cubes_lewiner
 
+
 from .io_utils import TemporaryNamedPipe, AutoDeleteDir
-
-def generate_obj(vertices_xyz, faces, normals_xyz=[]):
-    """
-    Given lists of vertices and faces, write them to a new BytesIO stream in .obj format.
-    """
-    mesh_bytes = BytesIO()
-    mesh_bytes.write(b"# OBJ file\n")
-
-    for (x,y,z) in vertices_xyz:
-        mesh_bytes.write(f"v {x:.7f} {y:.7f} {z:.7f}\n".encode('utf-8'))
-
-    for (x,y,z) in normals_xyz:
-        mesh_bytes.write(f"vn {x:.7f} {y:.7f} {z:.7f}\n".encode('utf-8'))
-
-    for (v1, v2, v3) in faces:
-        mesh_bytes.write(f"f {v1} {v2} {v3} \n".encode('utf-8'))
-    
-    mesh_bytes.seek(0)
-    return mesh_bytes
+from .obj_utils import write_obj, read_obj
+from .normals import compute_vertex_normals
 
 
 def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, step_size=1, output_format='obj', return_vertex_count=False):
@@ -77,15 +61,10 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
     vertices_zyx[:] *= downsample_factor
     vertices_zyx[:] += global_offset_zyx
 
-    # OBJ format: XYZ order
-    vertices_xyz = vertices_zyx[:, ::-1]
-    normals_xyz = normals_zyx[:, ::-1]
+    mesh_stream = BytesIO()
+    write_obj(vertices_zyx, faces, normals_zyx, mesh_stream)
+    mesh_stream.seek(0)
     
-    # OBJ format: Faces start at index 1 (not 0)
-    faces += 1
-
-    mesh_stream = generate_obj(vertices_xyz, faces, normals_xyz)
-        
     child_processes = []
 
     try:
@@ -101,6 +80,16 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
             cmd = f'fq-mesh-simplify {simplify_input_pipe.path} {simplify_output_pipe.path} {simplify_ratio}'
             child_processes.append( (cmd, subprocess.Popen(cmd, shell=True) ) )
             mesh_stream = simplify_output_pipe.open_stream('rb')
+            
+            # The fq-mesh-simplify tool does not compute normals.  Compute them.
+            vertices_zyx, faces, _empty_normals = read_obj(mesh_stream)
+            mesh_stream.close()
+
+            normals_zyx = compute_vertex_normals(vertices_zyx, faces)
+            
+            mesh_stream = BytesIO()
+            write_obj(vertices_zyx, faces, normals_zyx, mesh_stream)
+            mesh_stream.seek(0)
 
         if output_format == 'drc':
             # Sadly, draco is incapable of reading from non-seekable inputs.
@@ -122,10 +111,7 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
         if not return_vertex_count:
             return mesh_bytes
 
-        if simplify_ratio is None:
-            return mesh_bytes, len(vertices_zyx)
-        else:
-            return mesh_bytes, int( simplify_ratio * len(vertices_zyx) )
+        return mesh_bytes, len(vertices_zyx)
 
     finally:
         # Explicitly wait() for the child processes
