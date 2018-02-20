@@ -96,6 +96,9 @@ class TemporaryNamedPipe:
         def __exit__(self, *args):
             self.close()
 
+        def __iter__(self):
+            return self._file.__iter__()
+
         def fileno(self, *args, **kwargs): return self._file.fileno(*args, **kwargs)
         def flush(self, *args, **kwargs): return self._file.flush(*args, **kwargs)
         def isatty(self, *args, **kwargs): return self._file.isatty(*args, **kwargs)
