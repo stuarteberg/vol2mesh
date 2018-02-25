@@ -4,15 +4,13 @@ from io import BytesIO
 from shutil import copyfileobj
 
 import numpy as np
-from skimage.measure import marching_cubes_lewiner
-
 
 from .io_utils import TemporaryNamedPipe, AutoDeleteDir
 from .obj_utils import write_obj, read_obj
 from .normals import compute_vertex_normals
+from .mesh_utils import binary_vol_to_mesh
 
-
-def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, step_size=1, output_format='obj', return_vertex_count=False):
+def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify_ratio=None, output_format='obj', return_vertex_count=False):
     """
     Given a binary volume, convert it to a mesh in .obj format, optionally simplified.
     
@@ -27,9 +25,6 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
         Factor by which the given volume has been downsampled from its original size
     simplify_ratio:
         How much to simplify the generated mesh (or None to skip simplification)
-    step_size:
-        Passed to skimage.measure.marching_cubes_lewiner().
-        Larger values result in coarser results via faster computation.
     output_format:
         Either 'drc' or 'obj'
     method:
@@ -42,20 +37,11 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
     assert output_format in ('obj', 'drc'), \
         f"Unknown output format: {output_format}.  Expected one of ('obj', 'drc')"
 
-    if simplify_ratio == 1.0:
-        simplify_ratio = None
+    box = [ global_offset_zyx,
+            global_offset_zyx + downsample_factor * np.asarray(volume_zyx.shape) ]
 
-    try:    
-        vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(volume_zyx, 0.5, step_size=step_size)
-    except ValueError:
-        if volume_zyx.all():
-            # To consider:
-            # Alternatively, we could return an empty .obj file in this case,
-            # but for now it seems better to force the caller to decide what she wants to do.
-            raise ValueError("Can't create mesh from completely solid volume.\n"
-                             "(Volume edges are not normally converted to mesh faces, so the mesh would be empty.)\n"
-                             "Try padding the input with an empty halo.")
-        raise
+    mesh = binary_vol_to_mesh(volume_zyx, box, 'skimage')
+    vertices_zyx, faces, normals_zyx = mesh.vertices_zyx, mesh.faces, mesh.normals_zyx
 
     # Rescale and translate
     vertices_zyx[:] *= downsample_factor
@@ -66,6 +52,9 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
     mesh_stream.seek(0)
     
     child_processes = []
+
+    if simplify_ratio == 1.0:
+        simplify_ratio = None
 
     try:
         # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).

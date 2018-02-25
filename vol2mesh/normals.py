@@ -36,7 +36,7 @@ def compute_face_normals(vertices_zyx, faces, normalize=False):
         v2 = corners[2] - corners[0]
 
         v_normal = cross(v2, v1)    # This ordering is required for correct sign,
-                                    # since the handedness of the coordinate system is different for zyx vs xzy
+                                    # since the handedness of the coordinate system is different for zyx vs xyz
         if normalize:
             norm = np.linalg.norm(v_normal)
             if norm != 0.0:
