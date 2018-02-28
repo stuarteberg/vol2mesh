@@ -49,7 +49,7 @@ class Test_mesh_from_array(unittest.TestCase):
     def test_tiny_array(self):
         """
         Tiny arrays trigger an exception in skimage, so they must be padded first.
-        Verify that they can be meshified properly.
+        Verify that they can be meshified (after padding).
         """
         one_voxel = np.ones((1,1,1), np.uint8)
         tiny_mesh = mesh_from_array( one_voxel, (0,0,0), 1, simplify_ratio=None )

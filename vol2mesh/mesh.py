@@ -68,26 +68,38 @@ class Mesh:
         else:
             fullres_box_zyx = np.asarray(fullres_box_zyx)
         
+        # Infer the resolution of the downsampled volume
+        resolution = (fullres_box_zyx[1] - fullres_box_zyx[0]) // downsampled_volume_zyx.shape
+
         try:
             if method == 'skimage':
+                padding = np.array([0,0,0])
+                
+                # Tiny volumes trigger a corner case in skimage, so we pad them with zeros.
+                # This results in faces on all sides of the volume,
+                # but it's not clear what else to do.
                 if (np.array(downsampled_volume_zyx.shape) <= 2).any():
                     padding = np.array([2,2,2], dtype=int) - downsampled_volume_zyx.shape
                     padding = np.maximum([0,0,0], padding)
-                    downsampled_volume_zyx = np.pad( downsampled_volume_zyx, tuple(zip((0,0,0), padding)), 'constant' )
+                    downsampled_volume_zyx = np.pad( downsampled_volume_zyx, tuple(zip(padding, padding)), 'constant' )
+
                 vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, step_size=1)
+
+                if padding.any():
+                    vertices_zyx -= padding
             else:
                 raise RuntimeError(f"Uknown method: {method}")
         except ValueError:
             if downsampled_volume_zyx.all():
-                # Completely full boxes are 
+                # Completely full boxes are not meshable -- they would be
+                # open on all sides, leaving no vertices or faces.
+                # Just return an empty mesh.
                 empty_vertices = np.zeros( (0, 3), dtype=np.float32 )
                 empty_faces = np.zeros( (0, 3), dtype=np.uint32 )
                 return Mesh(empty_vertices, empty_faces, box=fullres_box_zyx)
             else:
                 raise
     
-        # Infer the resolution of the downsampled volume
-        resolution = (fullres_box_zyx[1] - fullres_box_zyx[0]) // downsampled_volume_zyx.shape
         
         # Upscale and translate the mesh into place
         vertices_zyx[:] *= resolution
