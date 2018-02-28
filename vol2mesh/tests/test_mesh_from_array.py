@@ -58,13 +58,11 @@ class Test_mesh_from_array(unittest.TestCase):
  
     def test_solid_array(self):
         """
-        Solid volumes can't be meshified. An exception is raised.
+        Solid volumes can't be meshified. An empty mesh is returned instead.
         """
         solid_volume = np.ones((3,3,3), np.uint8)
-        try:
-            _mesh = mesh_from_array( solid_volume, (0,0,0), 1, simplify_ratio=None )
-        except ValueError:
-            pass
+        mesh_bytes = mesh_from_array( solid_volume, (0,0,0), 1, simplify_ratio=None )
+        assert len(mesh_bytes) == 0
  
     def test_simplify_single_padded_voxel(self):
         """

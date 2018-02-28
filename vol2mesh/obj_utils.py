@@ -2,7 +2,7 @@ from io import BytesIO
 from pathlib import Path
 import numpy as np
 
-def write_obj(vertices_zyx, faces, normals_zyx=[], output_file=None):
+def write_obj(vertices_zyx, faces, normals_zyx=None, output_file=None):
     """
     Generate an OBJ file from the given (binary) data and write it to the given byte stream or file path.
     
@@ -15,6 +15,9 @@ def write_obj(vertices_zyx, faces, normals_zyx=[], output_file=None):
     Note: Each 'face' consists of 3 indexes, which correspond to indexes in the vertices_zyx.
           The indexes should be 0-based. (They will be converted to 1-based in the OBJ)
     """
+    if normals_zyx is None:
+        normals_zyx = np.zeros((0,3), np.float32)
+
     need_close = True
 
     if output_file is None:
@@ -48,6 +51,10 @@ def _write_obj(vertices_zyx, faces, normals_zyx, mesh_bytestream):
     Returns:
         BytesIO
     """
+    if len(vertices_zyx) == 0:
+        # Empty meshes result in no bytes
+        return
+
     mesh_bytestream.write(b"# OBJ file\n")
 
     # OBJ format: XYZ order
