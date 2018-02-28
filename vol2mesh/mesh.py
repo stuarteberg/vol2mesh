@@ -167,22 +167,22 @@ class Mesh:
             # But at least we can use a pipe for the output...
             mesh_dir = AutoDeleteDir(tempfile.mkdtemp())
             mesh_path = f'{mesh_dir}/mesh.obj'
-            with open(mesh_path, 'wb') as mesh_file:
-                copyfileobj(BytesIO(obj_bytes), mesh_file)
+            with open(mesh_path, 'wb') as mesh_file, BytesIO(obj_bytes) as obj_stream:
+                copyfileobj(obj_stream, mesh_file)
+            
             draco_output_pipe = TemporaryNamedPipe('output.drc')
-    
             cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {draco_output_pipe.path}'
+            
             proc = subprocess.Popen(cmd, shell=True)
-            drc_stream = draco_output_pipe.open_stream('rb')
-            drc_bytes = drc_stream.read()
+            with draco_output_pipe.open_stream('rb') as drc_stream:
+                drc_bytes = drc_stream.read()
 
-            try:
-                proc.wait(timeout=1.0)
-                if proc.returncode != 0:
-                    raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
-                                       f"Command was: {cmd}")
-            finally:
-                return drc_bytes
+            proc.wait(timeout=600.0) # 10 minutes
+            if proc.returncode != 0:
+                raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
+                                   f"Command was: {cmd}")
+
+            return drc_bytes
 
 def concatenate_meshes(meshes):
     """
