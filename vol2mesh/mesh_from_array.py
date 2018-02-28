@@ -18,8 +18,6 @@ def mesh_from_array(volume_zyx, global_offset_zyx, downsample_factor=1, simplify
         How much to simplify the generated mesh (or None to skip simplification)
     output_format:
         Either 'drc' or 'obj'
-    method:
-        Either 'ilastik' or 'skimage'
     return_vertex_count:
         If True, also return the APPROXIMATE vertex count
         (We don't count the vertexes after decimation; we assume that decimation
