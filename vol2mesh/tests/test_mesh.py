@@ -20,40 +20,50 @@ class TestMesh(unittest.TestCase):
 
     def setUp(self):
         # Create a test object (shaped like an 'X')
-        center_line_img = np.zeros((100,100,100), dtype=np.uint32)
-        for i in range(100):
+        center_line_img = np.zeros((98,98,98), dtype=np.uint32)
+        for i in range(98):
             center_line_img[i, i, i] = 1
-            center_line_img[99-i, i, i] = 1
-         
+            center_line_img[97-i, i, i] = 1
+
         # Scipy distance_transform_edt conventions are opposite of vigra:
         # it calculates distances of non-zero pixels to the zero pixels.
         center_line_img = 1 - center_line_img
         distance_to_line = distance_transform_edt(center_line_img)
         binary_vol = (distance_to_line <= 10).astype(np.uint8)
 
+        binary_vol = np.pad(binary_vol, 1, 'constant')
+        assert binary_vol.shape == (100,100,100)
+
         #binary_vol = np.pad(binary_vol, 1, 'constant', constant_values=0)
         data_box = [(0,0,0), (binary_vol.shape)]
         
         self.binary_vol = binary_vol
         self.data_box = data_box
+        
+        min_nonzero_coord = np.transpose(binary_vol.nonzero()).min(axis=0)
+        max_nonzero_coord = np.transpose(binary_vol.nonzero()).max(axis=0)
+        
+        self.nonzero_box = np.array( [min_nonzero_coord, 1+max_nonzero_coord] )
 
-    @unittest.skip
     def test(self):
         # Pretend the data was downsampled and translated,
         # and therefore the mesh requires upscaling and translation
         data_box = np.array(self.data_box)
         data_box += 1000
         
+        nonzero_box = self.nonzero_box + 1000
+        
         FACTOR = 2
         data_box *= FACTOR
+        nonzero_box *= FACTOR
         
         mesh = Mesh.from_binary_vol( self.binary_vol, data_box )
         assert mesh.vertices_zyx.dtype == np.float32
         
-        mesh_box = np.array([mesh.vertices_zyx.min(axis=0), FACTOR+mesh.vertices_zyx.max(axis=0)])
-        assert (mesh_box == data_box).all(), f"{mesh_box.tolist()} != {data_box.tolist()}"
+        mesh_box = np.array([mesh.vertices_zyx.min(axis=0),
+                             mesh.vertices_zyx.max(axis=0)])
+        assert (mesh_box == nonzero_box).all(), f"{mesh_box.tolist()} != {nonzero_box.tolist()}"
 
-    @unittest.skip
     def test_blockwise(self):
         data_box = np.array(self.data_box)
         blocks = []
@@ -75,8 +85,8 @@ class TestMesh(unittest.TestCase):
         
         mesh = Mesh.from_binary_blocks(blocks, boxes)
         data_box = np.array(self.data_box)
-        mesh_box = np.array([mesh.vertices_zyx.min(axis=0), 1+mesh.vertices_zyx.max(axis=0)])
-        assert (mesh_box == data_box).all(), f"{mesh_box.tolist()} != {data_box.tolist()}"
+        mesh_box = np.array([mesh.vertices_zyx.min(axis=0), mesh.vertices_zyx.max(axis=0)])
+        assert (mesh_box == self.nonzero_box).all(), f"{mesh_box.tolist()} != {self.nonzero_box.tolist()}"
         
 #         with open('/tmp/test-mesh.obj', 'wb') as f:
 #             f.write(mesh.serialize())
@@ -94,9 +104,8 @@ class TestMesh(unittest.TestCase):
         Verify that they can be meshified (after padding).
         """
         one_voxel = np.ones((1,1,1), np.uint8)
-        _mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)] )
+        mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)] )
 
-    @unittest.skip
     def test_solid_array(self):
         """
         Solid volumes can't be meshified. An empty mesh is returned instead.
@@ -111,7 +120,7 @@ class TestMesh(unittest.TestCase):
         assert (mesh.box == box).all()
 
 class TestConcatenate(unittest.TestCase):
-    @unittest.skip
+
     def test_concatenate(self):
         vertexes_1 = np.array([[0,0,0],
                                [0,1,0],

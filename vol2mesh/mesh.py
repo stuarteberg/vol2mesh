@@ -84,6 +84,11 @@ class Mesh:
                     downsampled_volume_zyx = np.pad( downsampled_volume_zyx, tuple(zip(padding, padding)), 'constant' )
 
                 vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, step_size=1)
+                
+                # Skimage assumes that the coordinate origin is CENTERED inside pixel (0,0,0),
+                # whereas we assume that the origin is the UPPER-LEFT corner of pixel (0,0,0).
+                # Therefore, shift the results by a half-pixel.
+                vertices_zyx += 0.5
 
                 if padding.any():
                     vertices_zyx -= padding
