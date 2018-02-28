@@ -87,7 +87,7 @@ class TestMesh(unittest.TestCase):
         data_box = np.array(self.data_box)
         mesh_box = np.array([mesh.vertices_zyx.min(axis=0), mesh.vertices_zyx.max(axis=0)])
         assert (mesh_box == self.nonzero_box).all(), f"{mesh_box.tolist()} != {self.nonzero_box.tolist()}"
-        
+    
 #         with open('/tmp/test-mesh.obj', 'wb') as f:
 #             f.write(mesh.serialize())
 # 
@@ -119,6 +119,15 @@ class TestMesh(unittest.TestCase):
         assert mesh.normals_zyx.shape == (0,3)
         assert (mesh.box == box).all()
 
+    def test_empty_mesh(self):
+        """
+        What happens when we call functions on an empty mesh?
+        """
+        mesh = Mesh( np.zeros((0,3), np.float32), np.zeros((0,3), int) )
+        mesh.simplify(0.1)
+        mesh.serialize()
+        concatenate_meshes((mesh, mesh))
+    
 class TestConcatenate(unittest.TestCase):
 
     def test_concatenate(self):

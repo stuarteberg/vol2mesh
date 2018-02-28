@@ -131,7 +131,7 @@ def read_obj(mesh_bytestream):
         # In OBJ, faces start at index 1 (not 0), but we want to use numpy conventions
         faces -= 1
     
-        if faces.max() >= len(vertices_zyx):
+        if len(faces) > 0 and faces.max() >= len(vertices_zyx):
             raise RuntimeError(f"Unexpected format: A face referenced vertex {faces.max()}, which is out-of-bounds for the vertex list.")
 
         return vertices_zyx, faces, normals_zyx
