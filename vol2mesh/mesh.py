@@ -70,6 +70,10 @@ class Mesh:
         
         try:
             if method == 'skimage':
+                if (np.array(downsampled_volume_zyx.shape) <= 2).any():
+                    padding = np.array([2,2,2], dtype=int) - downsampled_volume_zyx.shape
+                    padding = np.maximum([0,0,0], padding)
+                    downsampled_volume_zyx = np.pad( downsampled_volume_zyx, tuple(zip((0,0,0), padding)), 'constant' )
                 vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, step_size=1)
             else:
                 raise RuntimeError(f"Uknown method: {method}")
