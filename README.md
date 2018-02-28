@@ -19,7 +19,7 @@ from vol2mesh.mesh_from_array import mesh_from_array
 
 # For some binary ndarray 'binary_array'
 box = [(0,0,0), (binary_vol.shape)]
-mesh_bytes = mesh_from_array( binary_vol, box, 1, simplify_ratio=0.2, smoothing_rounds=3, output_format='drc' )
+mesh_bytes = mesh_from_array( binary_vol, box, 1, simplify_ratio=0.2, output_format='drc' )
 
 with open('my_mesh.drc', 'wb') as f:
     f.write(mesh_simple_compressed)
