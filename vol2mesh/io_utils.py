@@ -11,9 +11,11 @@ class AutoDeleteDir:
     """ 
     def __init__(self, dirpath):
         self.dirpath = dirpath
+        self.skip_delete = False
     
     def __del__(self):
-        rmtree(self.dirpath)
+        if not self.skip_delete:
+            rmtree(self.dirpath)
 
     def __str__(self):
         return self.dirpath
