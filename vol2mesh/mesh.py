@@ -91,6 +91,24 @@ class Mesh:
         
         return Mesh(vertices_zyx, faces, normals_zyx, fullres_box_zyx)
 
+    @classmethod
+    def from_binary_blocks(cls, downsampled_binary_blocks, fullres_boxes_zyx=None, method='skimage'):
+        """
+        Alternate constructor.
+        Compute a mesh for each of the given binary volumes
+        (scaled and translated according to its associated box),
+        and concatenate them.
+        """
+        meshes = []
+        if fullres_boxes_zyx is None:
+            fullres_boxes_zyx = [None]*len(downsampled_binary_blocks)
+
+        for binary_vol, fullres_box_zyx in zip(downsampled_binary_blocks, fullres_boxes_zyx):
+            mesh = cls.from_binary_vol(binary_vol, fullres_box_zyx, method)
+            meshes.append(mesh)
+
+        return concatenate_meshes(meshes)
+        
 
     def simplify(self, fraction):
         """
