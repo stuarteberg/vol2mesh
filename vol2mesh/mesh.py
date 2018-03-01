@@ -208,15 +208,26 @@ class Mesh:
             raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
                                f"Command was: {cmd}")
 
-    def serialize(self, output_format='obj'):
+    def serialize(self, output_format=None, path=None):
         """
-        Serialize the mesh data in either .obj or .drc format, and return a bytes object.
+        Serialize the mesh data in either .obj or .drc format.
+        If path is given, write to that file.
+        Otherwise, return the serialized data as a bytes object.
         """
+        if path is not None:
+            output_format = os.path.splitext(path)[1][1:]
+        elif output_format is None:
+            output_format = 'obj'
+            
         assert output_format in ('obj', 'drc')
         obj_bytes = write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
         if output_format == 'obj':
-            return obj_bytes
+            if path:
+                with open(path, 'wb') as f:
+                    f.write(obj_bytes)
+            else:
+                return obj_bytes
 
         elif output_format == 'drc':
             # Sadly, draco is incapable of reading from non-seekable inputs.
@@ -239,7 +250,11 @@ class Mesh:
                 raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
                                    f"Command was: {cmd}")
 
-            return drc_bytes
+            if path:
+                with open(path, 'wb') as f:
+                    f.write(drc_bytes)
+            else:
+                return drc_bytes
 
 def concatenate_meshes(meshes):
     """
