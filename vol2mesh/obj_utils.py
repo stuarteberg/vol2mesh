@@ -81,11 +81,12 @@ def read_obj(mesh_bytestream):
     
     Note:
         Many OBJ features, such as texture coordinates (vt lines), parameter space vertices (vp lines),
-        "line elements", "materials", or faces with explicit vertex normal indices are not supported.
-        (We don't support anything that requires a slash ('/') in any face definition.)
+        "line elements", "materials", or faces with out-of-order vertex normal indices are not supported.
         
-        f 20 30 40 # <-- OK
-        f 20//1    # <-- NOT SUPPORTED
+        f 20 30 40                 # <-- OK
+        f 20//20 30//30 40//40     # <-- OK
+        f 20/1/20 30/2/30 40/3/40  # <-- OK, but texture coordinates will be discarded
+        f 20//1 30//2 40//3        # <-- NOT SUPPORTED (out-of-order vertex normals)
     
     Returns:
         vertices_zyx, faces, normals_zyx
@@ -107,33 +108,55 @@ def read_obj(mesh_bytestream):
         # Therefore we keep flattened lists, and reshape them afterwards.
         vertices_xyz_flat = []
         faces_flat = []
-        normals_xyz_flat = []
+        faces_normal_indices_flat = []
+        listed_normals_xyz_flat = []
+
         
         for line in mesh_bytestream:
             if line.startswith(b'v '):
                 vertices_xyz_flat.extend(map(float, line.split()[1:]))
             if line.startswith(b'f '):
-                faces_flat.extend(map(int, line.split()[1:]))
+                for word in line.split()[1:]:
+                    fields = word.split(b'/')
+                    faces_flat.append(int(fields[0]))
+                    if len(fields) == 3:
+                        faces_normal_indices_flat.append(int(fields[2]))
             if line.startswith(b'vn '):
-                normals_xyz_flat.extend(map(float, line.split()[1:]))
+                listed_normals_xyz_flat.extend(map(float, line.split()[1:]))
     
         if len(vertices_xyz_flat) % 3:
             raise RuntimeError("Unexpected format: total vertex count is not divisible by 3!")
         if len(faces_flat) % 3:
             raise RuntimeError("Unexpected format: face vertex count is not divisible by 3!")
-        if len(normals_xyz_flat) % 3:
+        if len(listed_normals_xyz_flat) % 3:
             raise RuntimeError("Unexpected format: normal components count is not divisible by 3!")
     
         vertices_xyz = np.array(vertices_xyz_flat, dtype=np.float32).reshape((-1,3))
         faces = np.array(faces_flat, dtype=np.uint32).reshape((-1,3))
-        normals_xyz = np.array(normals_xyz_flat, dtype=np.float32).reshape((-1,3))
-        
-        vertices_zyx = vertices_xyz[:, ::-1]
-        normals_zyx = normals_xyz[:, ::-1]
-        
-        # In OBJ, faces start at index 1 (not 0), but we want to use numpy conventions
+        faces_normal_indices = np.array(faces_normal_indices_flat, dtype=np.uint32).reshape((-1,3))
+        listed_normals_xyz = np.array(listed_normals_xyz_flat, dtype=np.float32).reshape((-1,3))
+
+        # In OBJ, indices start at index 1 (not 0), but we want to use numpy conventions
         faces -= 1
-    
+        faces_normal_indices -= 1
+        
+        if len(faces_normal_indices) > 0:
+            normals_zyx = np.zeros(vertices_xyz.shape, dtype=np.float32)
+            normals_xyz = normals_zyx[:, ::-1]
+            # TODO: Speed up this loop with fancy indexing or numba
+            for face, normal_indices in zip(faces, faces_normal_indices):
+                normals_xyz[face[0]] = listed_normals_xyz[normal_indices[0]]
+                normals_xyz[face[1]] = listed_normals_xyz[normal_indices[1]]
+                normals_xyz[face[2]] = listed_normals_xyz[normal_indices[2]]
+        elif len(listed_normals_xyz) > 0:
+            if len(listed_normals_xyz) != len(vertices_xyz):
+                raise RuntimeError("Listed normals do not match number of listed vertices")
+            normals_zyx = listed_normals_xyz[:, ::-1]
+        else:
+            normals_zyx = np.zeros( (0,3), np.float32 )
+
+        vertices_zyx = vertices_xyz[:, ::-1]
+        
         if len(faces) > 0 and faces.max() >= len(vertices_zyx):
             raise RuntimeError(f"Unexpected format: A face referenced vertex {faces.max()}, which is out-of-bounds for the vertex list.")
 
