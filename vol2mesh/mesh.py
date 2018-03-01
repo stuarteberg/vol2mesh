@@ -164,9 +164,13 @@ class Mesh:
             meshes.append(mesh)
 
         return concatenate_meshes(meshes)
+
+
+    def recompute_normals(self):
+        self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces)
         
 
-    def simplify(self, fraction):
+    def simplify(self, fraction, compute_normals=True):
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
         """
@@ -178,7 +182,7 @@ class Mesh:
 
         # Normals are about to get discarded and recomputed anyway,
         # so delete them now to save some RAM and serialization time.
-        self.normals_zyx = None
+        self.normals_zyx = np.array((0,3), dtype=np.float32)
         
         obj_bytes = write_obj(self.vertices_zyx, self.faces)
         bytes_stream = BytesIO(obj_bytes)
@@ -196,7 +200,8 @@ class Mesh:
         self.vertices_zyx, self.faces, _empty_normals = read_obj(mesh_stream)
         mesh_stream.close()
 
-        self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces)
+        if compute_normals:
+            self.recompute_normals()
         
         proc.wait(timeout=1.0)
         if proc.returncode != 0:
