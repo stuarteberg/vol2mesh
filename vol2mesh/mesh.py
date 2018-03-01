@@ -1,3 +1,4 @@
+import os
 import tempfile
 import subprocess
 from io import BytesIO
@@ -46,6 +47,40 @@ class Mesh:
             self.box = np.array( [ self.vertices_zyx.min(axis=0),
                                    np.ceil( self.vertices_zyx.max(axis=0) ) ] ).astype(np.int32)
 
+
+    @classmethod
+    def from_file(cls, path):
+        """
+        Alternate constructor.
+        Read a mesh from .obj or .drc
+        """
+        ext = os.path.splitext(path)[1]
+        if ext == '.drc':
+            # Convert from draco to OBJ
+            # Use a pipe to avoid the need for the hard disk
+            draco_output_pipe = TemporaryNamedPipe('output.obj')
+            cmd = f"draco_decoder -i {path} -o {draco_output_pipe.path}" 
+            proc = subprocess.Popen(cmd, shell=True)
+            try:
+                with open(draco_output_pipe.path, 'rb') as obj_stream:
+                    #with open('/tmp/wtf.obj', 'wb') as f:
+                    #    f.write(obj_stream.read())
+                    #assert False
+                    vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
+                    proc.wait()
+                return Mesh(vertices_zyx, faces, normals_zyx)
+            finally:
+                if proc.returncode != 0:
+                    raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
+                                       f"Command was: {cmd}")
+        elif ext == '.obj':
+            with open(path, 'rb') as obj_stream:
+                vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
+                return Mesh(vertices_zyx, faces, normals_zyx)
+        else:
+            raise RuntimeError(f"Unknown file type: {path}")
+
+        return Mesh
 
     @classmethod
     def from_binary_vol(cls, downsampled_volume_zyx, fullres_box_zyx=None, method='skimage'):
