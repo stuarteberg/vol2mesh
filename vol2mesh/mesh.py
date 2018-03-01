@@ -288,28 +288,28 @@ class Mesh:
             self.recompute_normals()
 
 
-    def serialize(self, output_format=None, path=None):
+    def serialize(self, path=None, fmt=None):
         """
         Serialize the mesh data in either .obj or .drc format.
         If path is given, write to that file.
         Otherwise, return the serialized data as a bytes object.
         """
         if path is not None:
-            output_format = os.path.splitext(path)[1][1:]
-        elif output_format is None:
-            output_format = 'obj'
+            fmt = os.path.splitext(path)[1][1:]
+        elif fmt is None:
+            fmt = 'obj'
             
-        assert output_format in ('obj', 'drc')
+        assert fmt in ('obj', 'drc')
         obj_bytes = write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
-        if output_format == 'obj':
+        if fmt == 'obj':
             if path:
                 with open(path, 'wb') as f:
                     f.write(obj_bytes)
             else:
                 return obj_bytes
 
-        elif output_format == 'drc':
+        elif fmt == 'drc':
             # Sadly, draco is incapable of reading from non-seekable inputs.
             # It requires an actual input file, so we can't use a named pipe to avoid disk I/O.
             # But at least we can use a pipe for the output...

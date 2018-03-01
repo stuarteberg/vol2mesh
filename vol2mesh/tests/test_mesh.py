@@ -96,7 +96,7 @@ class TestMesh(unittest.TestCase):
 #             f.write(mesh.serialize())
 #         
 #         with open('/tmp/test-mesh-simplified.drc', 'wb') as f:
-#             f.write(mesh.serialize('drc'))
+#             f.write(mesh.serialize(fmt='drc'))
 
     def test_tiny_array(self):
         """
@@ -166,10 +166,10 @@ class TestMesh(unittest.TestCase):
                  [3,0,1]]
         
         mesh = Mesh(original_vertices_zyx, faces)
-        #mesh.serialize(path='/tmp/hexagon.obj')
+        #mesh.serialize('/tmp/hexagon.obj')
 
         mesh.laplacian_smooth(1)
-        #mesh.serialize(path='/tmp/hexagon-smoothed.obj')
+        #mesh.serialize('/tmp/hexagon-smoothed.obj')
         
         # Since vertex 3 is exactly centered between the rest,
         # it's location never changes.
@@ -184,16 +184,16 @@ class TestMesh(unittest.TestCase):
         Uncomment the serialize() lines to inspect the effects manually.
         """
         mesh = Mesh.from_binary_vol( self.binary_vol, self.data_box )
-        #mesh.serialize(path='/tmp/x-unsmoothed.obj')
+        #mesh.serialize('/tmp/x-unsmoothed.obj')
 
         mesh.simplify(0.2)
         mesh.laplacian_smooth(5)        
-        #mesh.serialize(path='/tmp/x-simplified-smoothed.obj')
+        #mesh.serialize('/tmp/x-simplified-smoothed.obj')
 
         mesh = Mesh.from_binary_vol( self.binary_vol, self.data_box )
         mesh.laplacian_smooth(5)
         mesh.simplify(0.2)
-        #mesh.serialize(path='/tmp/x-smoothed-simplified.obj')
+        #mesh.serialize('/tmp/x-smoothed-simplified.obj')
 
 
 class TestConcatenate(unittest.TestCase):

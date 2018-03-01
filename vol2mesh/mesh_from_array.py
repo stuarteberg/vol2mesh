@@ -61,7 +61,7 @@ def mesh_from_array(volume_zyx,
     if compute_normals:
         mesh.recompute_normals()
 
-    serialized_bytes = mesh.serialize(output_format)
+    serialized_bytes = mesh.serialize(fmt=output_format)
 
     if return_vertex_count:
         return serialized_bytes, len(mesh.vertices_zyx)
