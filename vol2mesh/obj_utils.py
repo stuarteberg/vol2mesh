@@ -69,7 +69,10 @@ def _write_obj(vertices_zyx, faces, normals_zyx, mesh_bytestream):
 
     # OBJ format: Faces start at index 1 (not 0)
     for (v1, v2, v3) in faces+1:
-        mesh_bytestream.write(f"f {v1} {v2} {v3} \n".encode('utf-8'))
+        if len(normals_xyz) > 0:
+            mesh_bytestream.write(f"f {v1}//{v1} {v2}//{v2} {v3}//{v3}\n".encode('utf-8'))
+        else:
+            mesh_bytestream.write(f"f {v1} {v2} {v3}\n".encode('utf-8'))
     
 
 def read_obj(mesh_bytestream):
