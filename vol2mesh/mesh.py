@@ -23,12 +23,13 @@ class Mesh:
             (The bounding box information is not stored in mesh files like .obj and .drc,
             but it is useful to store it here for programmatic manipulation.)
         """
-        self.vertices_zyx = vertices_zyx
-        self.faces = faces
-        self.normals_zyx = normals_zyx
+        self.vertices_zyx = np.asarray(vertices_zyx, dtype=np.float32)
+        self.faces = np.asarray(faces, dtype=np.uint32)
 
         if normals_zyx is None:
             self.normals_zyx = np.zeros((0,3), dtype=np.int32)
+        else:
+            self.normals_zyx = np.asarray(normals_zyx, np.float32)
 
         for a in (self.vertices_zyx, self.faces, self.normals_zyx):    
             assert a.ndim == 2 and a.shape[1] == 3, f"Input array has wrong shape: {a.shape}"
