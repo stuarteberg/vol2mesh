@@ -43,10 +43,8 @@ Appendix: Dependencies
 ----------------------
 
 ```
-conda install -c flyem-forge -c conda-forge marching_cubes fq-mesh-simplification draco tifffile
+conda install -c flyem-forge -c conda-forge fq-mesh-simplification draco
 ``` 
 
-- Marching cubes implementation: https://github.com/ilastik/marching_cubes
 - Mesh decimation implementation: https://github.com/sp4cerat/Fast-Quadric-Mesh-Simplification
 - Draco compressed format: https://github.com/google/draco
-- Reading TIFFs with tifffile: http://www.lfd.uci.edu/~gohlke/code/tifffile.py.html
