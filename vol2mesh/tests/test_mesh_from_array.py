@@ -33,9 +33,9 @@ class Test_mesh_from_array(unittest.TestCase):
         # Simplifying makes the file smaller
         mesh_simplified = mesh_from_array( binary_vol, box[0], 1, simplify_ratio=0.5 )
         assert len(mesh) > len(mesh_simplified), f"not true: {len(mesh)} > {len(mesh_simplified)}"
-         
-        # Simplifying more makes it even smaller
-        mesh_more_simplified = mesh_from_array( binary_vol, box[0], 1, simplify_ratio=0.2 )
+        
+        # Smoothing+Simplifying *more* makes it even smaller
+        mesh_more_simplified = mesh_from_array( binary_vol, box[0], 1, smoothing_rounds=5, simplify_ratio=0.2 )
         assert len(mesh_simplified) > len(mesh_more_simplified), f"not true: {len(mesh_simplified)} > {len(mesh_more_simplified)}"
     
         # Running draco on top should be smaller than simplification

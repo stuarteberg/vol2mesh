@@ -30,6 +30,7 @@ requirements:
     - draco
     - numpy
     - numba
+    - pandas
 
 test:
   imports:

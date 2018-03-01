@@ -104,7 +104,7 @@ class TestMesh(unittest.TestCase):
         Verify that they can be meshified (after padding).
         """
         one_voxel = np.ones((1,1,1), np.uint8)
-        mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)] )
+        _mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)] )
 
     def test_solid_array(self):
         """
@@ -125,9 +125,77 @@ class TestMesh(unittest.TestCase):
         """
         mesh = Mesh( np.zeros((0,3), np.float32), np.zeros((0,3), int) )
         mesh.simplify(0.1)
+        mesh.laplacian_smooth(2)
         mesh.serialize()
         concatenate_meshes((mesh, mesh))
-    
+
+    def test_smoothing_trivial(self):
+        vertices_zyx = np.array([[0.0, 0.0, 0.0],
+                                 [0.0, 0.0, 1.0],
+                                 [0.0, 0.0, 2.0]])
+ 
+        # This "face" is actually straight line,
+        # which makes it easy to see what's going on
+        faces = np.array([[0,1,2]])
+        mesh = Mesh(vertices_zyx, faces)
+        average_vertex = vertices_zyx.sum(axis=0) / 3
+        mesh.laplacian_smooth(1)
+        assert (mesh.vertices_zyx == average_vertex).all()
+
+    def test_smoothing_hexagon(self):
+        """
+        Try 'smoothing' a simple 2D hexagon, which is an easy case to understand.
+        """
+        # This map is correctly labeled with the vertex indices
+        _ = -1
+        hexagon = [[[_,_,_,_,_,_,_],
+                    [_,_,0,_,1,_,_],
+                    [_,_,_,_,_,_,_],
+                    [_,2,_,3,_,4,_],
+                    [_,_,_,_,_,_,_],
+                    [_,_,5,_,6,_,_],
+                    [_,_,_,_,_,_,_]]]
+
+        hexagon = 1 + np.array(hexagon)
+        original_vertices_zyx = np.transpose(hexagon.nonzero())
+        faces = [[3,1,4],
+                 [3,4,6],
+                 [3,6,5],
+                 [3,5,2],
+                 [3,2,0],
+                 [3,0,1]]
+        
+        mesh = Mesh(original_vertices_zyx, faces)
+        #mesh.serialize(path='/tmp/hexagon.obj')
+
+        mesh.laplacian_smooth(1)
+        #mesh.serialize(path='/tmp/hexagon-smoothed.obj')
+        
+        # Since vertex 3 is exactly centered between the rest,
+        # it's location never changes.
+        assert  (mesh.vertices_zyx[3] == original_vertices_zyx[3]).all()
+
+
+    def test_smoothing_X(self):
+        """
+        This just exercises the code on our standard X-shaped
+        test object, but doesn't verify the results.
+        
+        Uncomment the serialize() lines to inspect the effects manually.
+        """
+        mesh = Mesh.from_binary_vol( self.binary_vol, self.data_box )
+        #mesh.serialize(path='/tmp/x-unsmoothed.obj')
+
+        mesh.simplify(0.2)
+        mesh.laplacian_smooth(5)        
+        #mesh.serialize(path='/tmp/x-simplified-smoothed.obj')
+
+        mesh = Mesh.from_binary_vol( self.binary_vol, self.data_box )
+        mesh.laplacian_smooth(5)
+        mesh.simplify(0.2)
+        #mesh.serialize(path='/tmp/x-smoothed-simplified.obj')
+
+
 class TestConcatenate(unittest.TestCase):
 
     def test_concatenate(self):

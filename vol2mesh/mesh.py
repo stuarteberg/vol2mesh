@@ -3,7 +3,9 @@ import tempfile
 import subprocess
 from io import BytesIO
 from shutil import copyfileobj
+
 import numpy as np
+import pandas as pd
 from skimage.measure import marching_cubes_lewiner
 
 from .normals import compute_vertex_normals
@@ -171,7 +173,7 @@ class Mesh:
         self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces)
         
 
-    def simplify(self, fraction, compute_normals=True):
+    def simplify(self, fraction, recompute_normals=True):
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
         """
@@ -201,13 +203,90 @@ class Mesh:
         self.vertices_zyx, self.faces, _empty_normals = read_obj(mesh_stream)
         mesh_stream.close()
 
-        if compute_normals:
+        if recompute_normals:
             self.recompute_normals()
         
         proc.wait(timeout=1.0)
         if proc.returncode != 0:
             raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
                                f"Command was: {cmd}")
+
+
+    def laplacian_smooth(self, iterations=1, recompute_normals=True):
+        """
+        Smooth the mesh in-place.
+         
+        This is simplest mesh smoothing technique, known as Laplacian Smoothing.
+        Relocates each vertex by averaging its position with that of its adjacent neighbors.
+        Repeat for N iterations.
+        
+        Disadvantage: Results in overall shrinkage of the mesh, especially for more iterations.
+
+        Args:
+            iterations:
+                How many passes to take over the data.
+                More iterations results in a smoother mesh, but more shrinkage (and more CPU time).
+            
+            recompute_normals:
+                The previous normals are discarded.
+                If recompute_normals=True, they will be recomputed after smoothing.
+        
+        TODO: Variations of this technique can give refined results.
+            - Try weighting the influence of each neighbor by it's distance to the center vertex.
+            - Try smaller displacement steps for each iteration
+            - Try switching between 'push' and 'pull' iterations to avoid shrinkage
+            - Try smoothing "boundary" meshes independently from the rest of the mesh (less shrinkage)
+            - Try "Cotangent Laplacian Smoothing"
+        """
+        if iterations == 0:
+            return
+        
+        # Always discard old normals
+        self.normals_zyx = np.zeros((0,3), np.float32)
+
+        # Compute the list of all unique vertex adjacencies
+        all_edges = np.concatenate( [self.faces[:,(0,1)],
+                                     self.faces[:,(1,2)],
+                                     self.faces[:,(2,0)]] )
+        all_edges.sort(axis=1)
+        edges_df = pd.DataFrame( all_edges, columns=['v1_id', 'v2_id'] )
+        edges_df.drop_duplicates(inplace=True)
+        del all_edges
+
+        # (This sort isn't technically necessary, but it might give
+        # better cache locality for the vertex lookups below.)
+        edges_df.sort_values(['v1_id', 'v2_id'], inplace=True)
+
+        # How many neighbors for each vertex == how many times it is mentioned in the edge list
+        neighbor_counts = np.bincount(edges_df.values.flat, minlength=len(self.vertices_zyx))
+        
+        new_vertices_zyx = np.empty_like(self.vertices_zyx)
+        for _ in range(iterations):
+            new_vertices_zyx[:] = self.vertices_zyx
+
+            # For the complete edge index list, accumulate (sum) the vertexes on
+            # the right side of the list into the left side's address and vice-versa.
+            #
+            ## We want something like this:
+            # v1_indexes, v2_indexes = df['v1_id'], df['v2_id']
+            # new_vertices_zyx[v1_indexes] += self.vertices_zyx[v2_indexes]
+            # new_vertices_zyx[v2_indexes] += self.vertices_zyx[v1_indexes]
+            #
+            # ...but that doesn't work because v1_indexes will contain repeats,
+            #    and "fancy indexing" behavior is undefined in that case.
+            #
+            # Instead, it turns out that np.ufunc.at() works (it's an "unbuffered" operation)
+            np.add.at(new_vertices_zyx, edges_df['v1_id'], self.vertices_zyx[edges_df['v2_id'], :])
+            np.add.at(new_vertices_zyx, edges_df['v2_id'], self.vertices_zyx[edges_df['v1_id'], :])
+
+            new_vertices_zyx[:] /= (neighbor_counts[:,None] + 1) # plus one because each point itself is included in the sum
+
+            # Swap (save RAM allocation overhead by reusing the new_vertices_zyx array between iterations)
+            self.vertices_zyx, new_vertices_zyx = new_vertices_zyx, self.vertices_zyx
+        
+        if recompute_normals:
+            self.recompute_normals()
+
 
     def serialize(self, output_format=None, path=None):
         """
@@ -256,6 +335,7 @@ class Mesh:
                     f.write(drc_bytes)
             else:
                 return drc_bytes
+
 
 def concatenate_meshes(meshes):
     """
