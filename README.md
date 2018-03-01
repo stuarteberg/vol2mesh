@@ -15,11 +15,22 @@ Python usage
 Example:
 
 ```python
-from vol2mesh.mesh_from_array import mesh_from_array
+from vol2mesh import Mesh, mesh_from_array
 
 # For some binary ndarray 'binary_array'
 box = [(0,0,0), (binary_vol.shape)]
-mesh_bytes = mesh_from_array( binary_vol, box, 1, simplify_ratio=0.2, output_format='drc' )
+
+# Standard API
+mesh = Mesh.from_binary_vol( binary_vol, box )
+mesh2 = Mesh.from_file( '/path/to/mesh.drc' )
+
+mesh.laplacian_smooth(3, recompute_normals=False)
+mesh.simplify(0.2, recompute_normals=False)
+mesh.recompute_normals()
+mesh_bytes = mesh.serialize(fmt='drc')
+
+# Legacy API
+mesh_bytes = mesh_from_array( binary_vol, box[0], 1, smoothing_rounds=3, simplify_ratio=0.2, output_format='drc' )
 
 with open('my_mesh.drc', 'wb') as f:
     f.write(mesh_simple_compressed)
