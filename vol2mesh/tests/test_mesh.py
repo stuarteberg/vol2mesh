@@ -132,7 +132,8 @@ class TestMesh(unittest.TestCase):
         mesh = Mesh( np.zeros((0,3), np.float32), np.zeros((0,3), int) )
         mesh.simplify(0.1)
         mesh.laplacian_smooth(2)
-        mesh.serialize()
+        mesh.serialize(fmt='obj')
+        mesh.serialize(fmt='drc')
         concatenate_meshes((mesh, mesh))
 
     def test_smoothing_trivial(self):

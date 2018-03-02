@@ -313,7 +313,14 @@ class Mesh:
         elif fmt is None:
             fmt = 'obj'
             
-        assert fmt in ('obj', 'drc', 'drc')
+        assert fmt in ('obj', 'drc')
+        
+        if len(self.vertices_zyx) == 0:
+            if path:
+                open(path, 'wb').close()
+                return
+            return b''
+        
         obj_bytes = write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
         if fmt == 'obj':
@@ -338,7 +345,11 @@ class Mesh:
                 # instead of using a PIPE to save RAM.
                 drc_path = f"{mesh_dir}/mesh.drc"
                 cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {drc_path}'
-                subprocess.check_call(cmd, shell=True)
+                try:
+                    subprocess.check_call(cmd, shell=True)
+                except:
+                    mesh_dir.skip_delete = True
+                    raise
                 with open(drc_path, 'rb') as f:
                     drc_bytes = f.read()
             else:
