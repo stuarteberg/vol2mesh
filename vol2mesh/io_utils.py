@@ -9,7 +9,9 @@ class AutoDeleteDir:
     directory once this object goes out of scope,
     using __del__(). CPython only.
     """ 
-    def __init__(self, dirpath):
+    def __init__(self, dirpath=None):
+        if dirpath is None:
+            dirpath = tempfile.mkdtemp()
         self.dirpath = dirpath
         self.skip_delete = False
     

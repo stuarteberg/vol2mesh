@@ -1,5 +1,4 @@
 import os
-import tempfile
 import logging
 import subprocess
 from io import BytesIO
@@ -71,9 +70,6 @@ class Mesh:
             proc = subprocess.Popen(cmd, shell=True)
             try:
                 with open(draco_output_pipe.path, 'rb') as obj_stream:
-                    #with open('/tmp/wtf.obj', 'wb') as f:
-                    #    f.write(obj_stream.read())
-                    #assert False
                     vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
                     proc.wait()
                 return Mesh(vertices_zyx, faces, normals_zyx)
@@ -93,6 +89,51 @@ class Mesh:
             raise RuntimeError(msg)
 
         return Mesh
+
+
+    @classmethod
+    def from_buffer(cls, serialized_bytes, fmt):
+        """
+        Alternate constructor.
+        Read a mesh from either .obj or .drc format, from a buffer.
+        
+        Args:
+            serialized_bytes:
+                bytes object containing the .obj or .drc file contents
+            fmt:
+                Either 'obj' or 'drc'.
+        """
+        assert fmt in ('obj', 'drc')
+        if len(serialized_bytes) == 0:
+            return Mesh(np.zeros((0,3), np.float32), np.zeros((0,3), np.uint32))
+
+        if fmt == 'obj':
+            with BytesIO(serialized_bytes) as obj_stream:
+                vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
+                return Mesh(vertices_zyx, faces, normals_zyx)
+        elif fmt == 'drc':
+            # Convert from draco to OBJ
+            # Use a pipe for the output to avoid the need for the hard disk
+            # (We can't avoid using a file for the input.)
+            mesh_dir = AutoDeleteDir()
+            input_path = f"{mesh_dir}/input.drc"
+            with open(input_path, 'wb') as drc_file:
+                drc_file.write(serialized_bytes)
+            draco_output_pipe = TemporaryNamedPipe('output.obj')
+            cmd = f"draco_decoder -i {input_path} -o {draco_output_pipe.path}"
+            proc = subprocess.Popen(cmd, shell=True)
+            try:
+                with open(draco_output_pipe.path, 'rb') as obj_stream:
+                    vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
+                    proc.wait()
+                return Mesh(vertices_zyx, faces, normals_zyx)
+            finally:
+                if proc.returncode != 0:
+                    msg = f"Child process returned an error code: {proc.returncode}.\n"\
+                          f"Command was: {cmd}"
+                    logger.error(msg)
+                    raise RuntimeError(msg)
+
 
     @classmethod
     def from_binary_vol(cls, downsampled_volume_zyx, fullres_box_zyx=None, method='skimage'):
@@ -161,6 +202,7 @@ class Mesh:
         vertices_zyx[:] += fullres_box_zyx[0]
         
         return Mesh(vertices_zyx, faces, normals_zyx, fullres_box_zyx)
+
 
     @classmethod
     def from_binary_blocks(cls, downsampled_binary_blocks, fullres_boxes_zyx=None, method='skimage'):
@@ -334,7 +376,7 @@ class Mesh:
             # Sadly, draco is incapable of reading from non-seekable inputs.
             # It requires an actual input file, so we can't use a named pipe to avoid disk I/O.
             # But at least we can use a pipe for the output...
-            mesh_dir = AutoDeleteDir(tempfile.mkdtemp())
+            mesh_dir = AutoDeleteDir()
             mesh_path = f'{mesh_dir}/mesh.obj'
             with open(mesh_path, 'wb') as mesh_file, BytesIO(obj_bytes) as obj_stream:
                 copyfileobj(obj_stream, mesh_file)

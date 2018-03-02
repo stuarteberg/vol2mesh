@@ -67,8 +67,14 @@ class TestMesh(unittest.TestCase):
                              mesh.vertices_zyx.max(axis=0)])
         assert (mesh_box == nonzero_box).all(), f"{mesh_box.tolist()} != {nonzero_box.tolist()}"
         
-        mesh.serialize(fmt='obj')
-        mesh.serialize(fmt='drc')
+        serialized = mesh.serialize(fmt='obj')
+        unserialized = mesh.from_buffer(serialized, 'obj')
+        assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
+        
+        serialized = mesh.serialize(fmt='drc')
+        unserialized = mesh.from_buffer(serialized, 'drc')
+        assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
+        
 
     def test_blockwise(self):
         data_box = np.array(self.data_box)
