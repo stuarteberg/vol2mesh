@@ -1,5 +1,6 @@
 import os
 import tempfile
+import logging
 import subprocess
 from io import BytesIO
 from shutil import copyfileobj
@@ -11,6 +12,8 @@ from skimage.measure import marching_cubes_lewiner
 from .normals import compute_vertex_normals
 from .obj_utils import write_obj, read_obj
 from .io_utils import TemporaryNamedPipe, AutoDeleteDir
+
+logger = logging.getLogger(__name__)
 
 class Mesh:
     """
@@ -74,14 +77,18 @@ class Mesh:
                 return Mesh(vertices_zyx, faces, normals_zyx)
             finally:
                 if proc.returncode != 0:
-                    raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
-                                       f"Command was: {cmd}")
+                    msg = f"Child process returned an error code: {proc.returncode}.\n"\
+                          f"Command was: {cmd}"
+                    logger.error(msg)
+                    raise RuntimeError(msg)
         elif ext == '.obj':
             with open(path, 'rb') as obj_stream:
                 vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
                 return Mesh(vertices_zyx, faces, normals_zyx)
         else:
-            raise RuntimeError(f"Unknown file type: {path}")
+            msg = f"Unknown file type: {path}"
+            logger.error(msg)
+            raise RuntimeError(msg)
 
         return Mesh
 
@@ -131,7 +138,9 @@ class Mesh:
                 if padding.any():
                     vertices_zyx -= padding
             else:
-                raise RuntimeError(f"Uknown method: {method}")
+                msg = f"Uknown method: {method}"
+                logger.error(msg)
+                raise RuntimeError(msg)
         except ValueError:
             if downsampled_volume_zyx.all():
                 # Completely full boxes are not meshable -- they would be
@@ -141,6 +150,7 @@ class Mesh:
                 empty_faces = np.zeros( (0, 3), dtype=np.uint32 )
                 return Mesh(empty_vertices, empty_faces, box=fullres_box_zyx)
             else:
+                logger.error("Error during mesh generation")
                 raise
     
         
@@ -208,8 +218,10 @@ class Mesh:
         
         proc.wait(timeout=1.0)
         if proc.returncode != 0:
-            raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
-                               f"Command was: {cmd}")
+            msg = f"Child process returned an error code: {proc.returncode}.\n"\
+                  f"Command was: {cmd}"
+            logger.error(msg)
+            raise RuntimeError(msg)
 
 
     def laplacian_smooth(self, iterations=1, recompute_normals=True):
@@ -327,8 +339,10 @@ class Mesh:
 
             proc.wait(timeout=600.0) # 10 minutes
             if proc.returncode != 0:
-                raise RuntimeError(f"Child process returned an error code: {proc.returncode}.\n"
-                                   f"Command was: {cmd}")
+                msg = f"Child process returned an error code: {proc.returncode}.\n"\
+                      f"Command was: {cmd}"
+                logger.error(msg)
+                raise RuntimeError(msg)
 
             if path:
                 with open(path, 'wb') as f:
