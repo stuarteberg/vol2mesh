@@ -15,6 +15,8 @@ from .io_utils import TemporaryNamedPipe, AutoDeleteDir
 
 logger = logging.getLogger(__name__)
 
+DEBUG_DRACO = False
+
 class Mesh:
     """
     A class to hold the elements of a mesh.
@@ -311,7 +313,7 @@ class Mesh:
         elif fmt is None:
             fmt = 'obj'
             
-        assert fmt in ('obj', 'drc')
+        assert fmt in ('obj', 'drc', 'drc')
         obj_bytes = write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
         if fmt == 'obj':
@@ -329,20 +331,33 @@ class Mesh:
             mesh_path = f'{mesh_dir}/mesh.obj'
             with open(mesh_path, 'wb') as mesh_file, BytesIO(obj_bytes) as obj_stream:
                 copyfileobj(obj_stream, mesh_file)
-            
-            draco_output_pipe = TemporaryNamedPipe('output.drc')
-            cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {draco_output_pipe.path}'
-            
-            proc = subprocess.Popen(cmd, shell=True)
-            with draco_output_pipe.open_stream('rb') as drc_stream:
-                drc_bytes = drc_stream.read()
 
-            proc.wait(timeout=600.0) # 10 minutes
-            if proc.returncode != 0:
-                msg = f"Child process returned an error code: {proc.returncode}.\n"\
-                      f"Command was: {cmd}"
-                logger.error(msg)
-                raise RuntimeError(msg)
+            global DEBUG_DRACO
+            if DEBUG_DRACO:
+                # Write the .drc file to disk and read it that way,
+                # instead of using a PIPE to save RAM.
+                drc_path = f"{mesh_dir}/mesh.drc"
+                cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {drc_path}'
+                subprocess.check_call(cmd, shell=True)
+                with open(drc_path, 'rb') as f:
+                    drc_bytes = f.read()
+            else:
+                # Use a unix 'named pipe' to receive the output from the
+                # draco encoder without the need to write to the hard disk and read it.
+                draco_output_pipe = TemporaryNamedPipe('output.drc')
+                cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {draco_output_pipe.path}'
+                proc = subprocess.Popen(cmd, shell=True)
+                with draco_output_pipe.open_stream('rb') as drc_stream:
+                    drc_bytes = drc_stream.read()
+
+                proc.wait(timeout=600.0) # 10 minutes
+                if proc.returncode != 0:
+                    msg = f"Child process returned an error code: {proc.returncode}.\n"\
+                          f"Command was: {cmd}\n\n"
+                    msg += "Input mesh was: \n\n"
+                    msg += obj_bytes.decode()
+                    logger.error(msg)
+                    raise RuntimeError(msg)
 
             if path:
                 with open(path, 'wb') as f:

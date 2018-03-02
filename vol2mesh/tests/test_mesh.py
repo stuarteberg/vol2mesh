@@ -5,6 +5,9 @@ from scipy.ndimage import distance_transform_edt
 
 from vol2mesh.mesh import Mesh, concatenate_meshes
 
+import vol2mesh.mesh
+vol2mesh.mesh.DEBUG_DRACO = True
+
 def box_to_slicing(start, stop):
     """
     For the given bounding box (start, stop),
@@ -63,6 +66,9 @@ class TestMesh(unittest.TestCase):
         mesh_box = np.array([mesh.vertices_zyx.min(axis=0),
                              mesh.vertices_zyx.max(axis=0)])
         assert (mesh_box == nonzero_box).all(), f"{mesh_box.tolist()} != {nonzero_box.tolist()}"
+        
+        mesh.serialize(fmt='obj')
+        mesh.serialize(fmt='drc')
 
     def test_blockwise(self):
         data_box = np.array(self.data_box)
