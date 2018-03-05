@@ -208,6 +208,37 @@ class TestMesh(unittest.TestCase):
         mesh.simplify(0.2)
         #mesh.serialize('/tmp/x-smoothed-simplified.obj')
 
+    def test_stitch(self):
+        vertices = np.zeros( (10,3), np.float32 )
+        vertices[:,0] = np.arange(10)
+        
+        # Make 3 and 6 duplicates of 2 and 4, respectively
+        vertices[3] = vertices[2]
+        vertices[6] = vertices[4]
+        
+        faces = [[0,1,2],
+                 [3,4,5],
+                 [6,7,8]]
+        
+        remapped_faces = [[0,1,2],
+                          [2,4,5], # After mapping away from dupes
+                          [4,7,8]]
+        
+        remapped_faces = np.array(remapped_faces)
+        
+        # After dropping dupe rows
+        remapped_faces[(remapped_faces > 6)] -= 1
+        remapped_faces[(remapped_faces > 3)] -= 1
+        
+        reduced_vertices = list(vertices)
+        del reduced_vertices[6]
+        del reduced_vertices[3]
+        
+        mesh = Mesh(vertices, faces)
+        mesh.stitch_aligned_faces()
+        
+        assert (mesh.faces == remapped_faces).all()
+        assert (mesh.vertices_zyx == reduced_vertices).all()
 
 class TestConcatenate(unittest.TestCase):
 

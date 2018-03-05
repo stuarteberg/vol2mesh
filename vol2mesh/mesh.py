@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from skimage.measure import marching_cubes_lewiner
 
+from dvidutils import remap_duplicates, LabelMapper
+
 from .normals import compute_vertex_normals
 from .obj_utils import write_obj, read_obj
 from .io_utils import TemporaryNamedPipe, AutoDeleteDir
@@ -222,6 +224,39 @@ class Mesh:
 
         return concatenate_meshes(meshes)
 
+    def stitch_aligned_faces(self):
+        mapping_pairs = remap_duplicates(self.vertices_zyx)
+        
+        dup_indices, orig_indices = mapping_pairs.transpose()
+        if len(dup_indices) == 0:
+            return
+
+        # Discard old normals
+        self.normals_zyx = np.zeros((0,3), np.float32)
+
+        # Remap faces to no longer refer to the duplicates
+        mapper = LabelMapper(dup_indices, orig_indices)
+        mapper.apply_inplace(self.faces, allow_unmapped=True)
+        
+        # Now the faces have been stitched, but the duplicate
+        # vertices are still unnecessarily present,
+        # and the face vertex indexes still reflect that.
+
+        # Calculate shift:
+        # Determine number of duplicates above each vertex in the list
+        drop_mask = np.zeros((self.vertices_zyx.shape[0]), bool)
+        drop_mask[(dup_indices, )] = True
+        cumulative_dupes = np.zeros(drop_mask.shape[0]+1, np.uint32)
+        np.add.accumulate(drop_mask, out=cumulative_dupes[1:])
+
+        # Renumber the faces
+        orig = np.arange(len(self.vertices_zyx), dtype=np.uint32)
+        shiftmap = orig - cumulative_dupes[:-1]
+        self.faces = shiftmap[self.faces]
+
+        # Delete the duplicate vertexes
+        self.vertices_zyx = np.delete(self.vertices_zyx, dup_indices, axis=0)
+
 
     def recompute_normals(self):
         self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces)
@@ -425,6 +460,7 @@ def concatenate_meshes(meshes):
     renumbering the face vertices as needed, and expanding the bounding box
     to encompass the union of the meshes.
     """
+    assert hasattr(meshes, '__len__')
     vertex_counts = np.fromiter((len(mesh.vertices_zyx) for mesh in meshes), np.int64, len(meshes))
     normals_counts = np.fromiter((len(mesh.normals_zyx) for mesh in meshes), np.int64, len(meshes))
     face_counts = np.fromiter((len(mesh.faces) for mesh in meshes), np.int64, len(meshes))

@@ -30,6 +30,7 @@ requirements:
     - numpy
     - numba
     - pandas
+    - dvidutils >=0.0.post29
 
 test:
   imports:
