@@ -218,17 +218,23 @@ class TestMesh(unittest.TestCase):
         
         faces = [[0,1,2],
                  [3,4,5],
-                 [6,7,8]]
+                 [6,7,8],
+                 [7,8,4]] # <- duplicate face (different vertex order, and 4=6)
         
+        # After mapping away from dupe vertices
         remapped_faces = [[0,1,2],
-                          [2,4,5], # After mapping away from dupes
-                          [4,7,8]]
+                          [2,4,5], 
+                          [4,7,8],
+                          [7,8,4]] # duplicated face (different vertex order)
         
         remapped_faces = np.array(remapped_faces)
         
         # After dropping dupe rows
         remapped_faces[(remapped_faces > 6)] -= 1
         remapped_faces[(remapped_faces > 3)] -= 1
+
+        # Drop last face (duplicated)
+        remapped_faces = remapped_faces[:-1, :]
         
         reduced_vertices = list(vertices)
         del reduced_vertices[6]

@@ -224,7 +224,26 @@ class Mesh:
 
         return concatenate_meshes(meshes)
 
-    def stitch_aligned_faces(self):
+
+    def stitch_aligned_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False):
+        """
+        Search for duplicate vertices and remove all references to them in self.faces,
+        by replacing them with the index of the first matching vertex in the list.
+        Works in-place.
+        
+        Args:
+            drop_duplicate_vertices:
+                If True, drop the duplicate vertices from self.vertices_zyx
+                (since no faces refer to them any more, this saves some RAM).
+            
+            drop_duplicate_faces:
+                If True, remove faces with an identical
+                vertex list to any previous face.
+            
+            recompute_normals:
+                Normals are discarded during the stitching procedure.
+                To recompute them afterwards, set recompute_normals=True.
+        """
         mapping_pairs = remap_duplicates(self.vertices_zyx)
         
         dup_indices, orig_indices = mapping_pairs.transpose()
@@ -237,25 +256,50 @@ class Mesh:
         # Remap faces to no longer refer to the duplicates
         mapper = LabelMapper(dup_indices, orig_indices)
         mapper.apply_inplace(self.faces, allow_unmapped=True)
+        del mapper
+        del orig_indices
         
         # Now the faces have been stitched, but the duplicate
         # vertices are still unnecessarily present,
         # and the face vertex indexes still reflect that.
+        # Also, we may have uncovered duplicate faces now that the
+        # vertexes have been canonicalized.
 
-        # Calculate shift:
-        # Determine number of duplicates above each vertex in the list
-        drop_mask = np.zeros((self.vertices_zyx.shape[0]), bool)
-        drop_mask[(dup_indices, )] = True
-        cumulative_dupes = np.zeros(drop_mask.shape[0]+1, np.uint32)
-        np.add.accumulate(drop_mask, out=cumulative_dupes[1:])
+        def _drop_duplicate_vertices():
+            # Calculate shift:
+            # Determine number of duplicates above each vertex in the list
+            drop_mask = np.zeros((self.vertices_zyx.shape[0]), bool)
+            drop_mask[(dup_indices, )] = True
+            cumulative_dupes = np.zeros(drop_mask.shape[0]+1, np.uint32)
+            np.add.accumulate(drop_mask, out=cumulative_dupes[1:])
+    
+            # Renumber the faces
+            orig = np.arange(len(self.vertices_zyx), dtype=np.uint32)
+            shiftmap = orig - cumulative_dupes[:-1]
+            self.faces = shiftmap[self.faces]
 
-        # Renumber the faces
-        orig = np.arange(len(self.vertices_zyx), dtype=np.uint32)
-        shiftmap = orig - cumulative_dupes[:-1]
-        self.faces = shiftmap[self.faces]
+            # Delete the duplicate vertexes, which are unused now
+            self.vertices_zyx = np.delete(self.vertices_zyx, dup_indices, axis=0)
 
-        # Delete the duplicate vertexes
-        self.vertices_zyx = np.delete(self.vertices_zyx, dup_indices, axis=0)
+        if drop_duplicate_vertices:
+            _drop_duplicate_vertices()
+
+        def _drop_duplicate_faces():
+            # Normalize face vertex order before checking for duplicates.
+            # Technically, this means we don't distinguish
+            # betweeen clockwise/counter-clockwise ordering,
+            # but that seems unlikely to be a problem in practice.
+            sorted_faces = pd.DataFrame(np.sort(self.faces, axis=1))
+            duplicate_faces_mask = sorted_faces.duplicated()
+            faces_df = pd.DataFrame(self.faces)
+            faces_df.drop(duplicate_faces_mask.nonzero()[0], inplace=True)
+            self.faces = np.asarray(faces_df.values, order='C')
+
+        if drop_duplicate_faces:
+            _drop_duplicate_faces()
+
+        if recompute_normals:
+            self.recompute_normals()
 
 
     def recompute_normals(self):
