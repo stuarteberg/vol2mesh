@@ -250,7 +250,7 @@ class TestMesh(unittest.TestCase):
         del reduced_vertices[3]
         
         mesh = Mesh(vertices, faces)
-        mesh.stitch_aligned_faces()
+        mesh.stitch_adjacent_faces()
         
         assert (mesh.faces == remapped_faces).all()
         assert (mesh.vertices_zyx == reduced_vertices).all()

@@ -254,7 +254,7 @@ class Mesh:
 
         mesh = concatenate_meshes(meshes)
         if stitch:
-            mesh.stitch_aligned_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=True)
+            mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=True)
         return mesh
 
     def __getstate__(self):
@@ -307,7 +307,7 @@ class Mesh:
         self._draco_bytes = None
 
 
-    def stitch_aligned_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False):
+    def stitch_adjacent_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False):
         """
         Search for duplicate vertices and remove all references to them in self.faces,
         by replacing them with the index of the first matching vertex in the list.
