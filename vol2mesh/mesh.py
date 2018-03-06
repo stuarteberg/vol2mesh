@@ -223,22 +223,39 @@ class Mesh:
 
 
     @classmethod
-    def from_binary_blocks(cls, downsampled_binary_blocks, fullres_boxes_zyx=None, method='skimage'):
+    def from_binary_blocks(cls, downsampled_binary_blocks, fullres_boxes_zyx, stitch=True, method='skimage'):
         """
         Alternate constructor.
         Compute a mesh for each of the given binary volumes
         (scaled and translated according to its associated box),
-        and concatenate them.
+        and concatenate them (but not stitch them).
+        
+        Args:
+            downsampled_binary_blocks:
+                List of binary blocks on which to run marching cubes.
+                The blocks need not be full-scale; their meshes will be re-scaled
+                according to their corresponding bounding-boxes in fullres_boxes_zyx.
+
+            fullres_boxes_zyx:
+                List of bounding boxes corresponding to the blocks.
+                Each block meshes will be re-scaled to fit exactly within it's bounding box.
+            
+            stitch:
+                If True, deduplicate the vertices in the final mesh and topologically
+                connect the faces in adjacent blocks.
+            
+            method:
+                Which library to use for marching_cubes. Currently, only 'skimage' is supported.
         """
         meshes = []
-        if fullres_boxes_zyx is None:
-            fullres_boxes_zyx = [None]*len(downsampled_binary_blocks)
-
         for binary_vol, fullres_box_zyx in zip(downsampled_binary_blocks, fullres_boxes_zyx):
             mesh = cls.from_binary_vol(binary_vol, fullres_box_zyx, method)
             meshes.append(mesh)
 
-        return concatenate_meshes(meshes)
+        mesh = concatenate_meshes(meshes)
+        if stitch:
+            mesh.stitch_aligned_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=True)
+        return mesh
 
     def __getstate__(self):
         """
@@ -417,10 +434,11 @@ class Mesh:
         Smooth the mesh in-place.
          
         This is simplest mesh smoothing technique, known as Laplacian Smoothing.
-        Relocates each vertex by averaging its position with that of its adjacent neighbors.
+        Relocates each vertex by averaging its position with those of its adjacent neighbors.
         Repeat for N iterations.
         
-        Disadvantage: Results in overall shrinkage of the mesh, especially for more iterations.
+        Disadvantage: Results in overall shrinkage of the mesh, especially for many iterations.
+                      (But nearly all smoothing techniques cause at least some shrinkage.)
 
         Args:
             iterations:
