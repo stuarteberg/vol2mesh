@@ -6,6 +6,8 @@ from scipy.ndimage import distance_transform_edt
 
 from vol2mesh.mesh import Mesh, concatenate_meshes
 
+import faulthandler
+faulthandler.enable()
 
 def box_to_slicing(start, stop):
     """
@@ -266,6 +268,14 @@ class TestMesh(unittest.TestCase):
         assert len(mesh.vertices_zyx) == len(unpickled.vertices_zyx)
         assert len(mesh.faces) == len(unpickled.faces)
 
+    def test_pickling_empty(self):
+        mesh = Mesh(np.zeros((0,3), np.float32), 
+                    np.zeros((0,3), np.uint32))
+        pickled = pickle.dumps(mesh)
+        unpickled = pickle.loads(pickled)
+        
+        assert len(unpickled.vertices_zyx) == 0
+        assert len(unpickled.faces) == 0
 
 class TestConcatenate(unittest.TestCase):
 

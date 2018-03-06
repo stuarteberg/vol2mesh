@@ -263,7 +263,7 @@ class Mesh:
         If self.pickle_with_draco is True, compress the mesh to a buffer with draco
         (vertices and faces only, for now), and discard the original arrays.
         """
-        if self.pickle_with_draco and self._draco_bytes is None:
+        if self.pickle_with_draco and self._draco_bytes is None and len(self._vertices_zyx) > 0:
             self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._faces)
             self._vertices_zyx = None
             self._faces = None
