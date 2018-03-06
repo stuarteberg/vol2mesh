@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from skimage.measure import marching_cubes_lewiner
 
-from dvidutils import remap_duplicates, LabelMapper
+from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, decode_drc_bytes_to_faces
 
 from .normals import compute_vertex_normals
 from .obj_utils import write_obj, read_obj
@@ -22,24 +22,41 @@ class Mesh:
     """
     A class to hold the elements of a mesh.
     """
-    def __init__(self, vertices_zyx, faces, normals_zyx=None, box=None):
+    def __init__(self, vertices_zyx, faces, normals_zyx=None, box=None, pickle_with_draco=True):
         """
-        vertices_zyx: ndarray (N,3), float
-        faces: ndarray (M,3), integer (each element is an index referring to an element of vertices_zyx
-        normals_zyx: ndarray (N,3), float
-        box: ndarray (2,3) Overall bounding box of the mesh.
-            (The bounding box information is not stored in mesh files like .obj and .drc,
-            but it is useful to store it here for programmatic manipulation.)
+        Args:
+            vertices_zyx: ndarray (N,3), float
+            
+            faces: ndarray (M,3), integer
+                Each element is an index referring to an element of vertices_zyx
+        
+            normals_zyx: ndarray (N,3), float
+            
+            box: ndarray (2,3)
+                Overall bounding box of the mesh.
+                (The bounding box information is not stored in mesh files like .obj and .drc,
+                but it is useful to store it here for programmatic manipulation.)
+            
+            pickle_with_draco:
+                If True, pickling will be performed by encoding the vertices and faces via draco compression.
+                The normals, if any, will be DISCARDED.
+                Yes, currently, pickling has the SIDE-EFFECT of discarding the normals.  
         """
-        self.vertices_zyx = np.asarray(vertices_zyx, dtype=np.float32)
-        self.faces = np.asarray(faces, dtype=np.uint32)
+        self.pickle_with_draco = pickle_with_draco
+        
+        # Note: When restoring from pickled data, vertices and faces
+        #       are restored lazily, upon first access.
+        #       See __getstate__().
+        self._vertices_zyx = np.asarray(vertices_zyx, dtype=np.float32)
+        self._faces = np.asarray(faces, dtype=np.uint32)
+        self._draco_bytes = None
 
         if normals_zyx is None:
-            self.normals_zyx = np.zeros((0,3), dtype=np.int32)
+            self._normals_zyx = np.zeros((0,3), dtype=np.int32)
         else:
-            self.normals_zyx = np.asarray(normals_zyx, np.float32)
+            self._normals_zyx = np.asarray(normals_zyx, np.float32)
 
-        for a in (self.vertices_zyx, self.faces, self.normals_zyx):    
+        for a in (self._vertices_zyx, self._faces, self._normals_zyx):
             assert a.ndim == 2 and a.shape[1] == 3, f"Input array has wrong shape: {a.shape}"
 
         if box is not None:
@@ -55,7 +72,6 @@ class Mesh:
         else:
             self.box = np.array( [ self.vertices_zyx.min(axis=0),
                                    np.ceil( self.vertices_zyx.max(axis=0) ) ] ).astype(np.int32)
-
 
     @classmethod
     def from_file(cls, path):
@@ -223,6 +239,55 @@ class Mesh:
             meshes.append(mesh)
 
         return concatenate_meshes(meshes)
+
+    def __getstate__(self):
+        """
+        Pickle representation.
+        If self.pickle_with_draco is True, compress the mesh to a buffer with draco
+        (vertices and faces only, for now), and discard the original arrays.
+        """
+        if self.pickle_with_draco and self._draco_bytes is None:
+            self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._faces)
+            self._vertices_zyx = None
+            self._faces = None
+            
+            # current version of our draco encoding functions doesn't support normals.
+            # Discard them.
+            self._normals_zyx = np.zeros((0,3), np.float32)
+        return self.__dict__
+
+    @property
+    def vertices_zyx(self):
+        if self._vertices_zyx is None:
+            self._decode_from_pickled_draco()
+        return self._vertices_zyx
+
+    @vertices_zyx.setter
+    def vertices_zyx(self, new_vertices_zyx):
+        self._vertices_zyx = new_vertices_zyx
+
+    @property
+    def faces(self):
+        if self._faces is None:
+            self._decode_from_pickled_draco()
+        return self._faces
+
+    @faces.setter
+    def faces(self, new_faces):
+        self._faces = new_faces
+
+    @property
+    def normals_zyx(self):
+        return self._normals_zyx
+    
+    @normals_zyx.setter
+    def normals_zyx(self, new_normals_zyx):
+        self._normals_zyx = new_normals_zyx
+
+    def _decode_from_pickled_draco(self):
+        vertices_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
+        self.vertices_zyx = vertices_xyz[:, ::-1]
+        self._draco_bytes = None
 
 
     def stitch_aligned_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False):

@@ -1,12 +1,11 @@
 from itertools import starmap
 import unittest
+import pickle
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
 from vol2mesh.mesh import Mesh, concatenate_meshes
 
-import vol2mesh.mesh
-vol2mesh.mesh.DEBUG_DRACO = True
 
 def box_to_slicing(start, stop):
     """
@@ -18,6 +17,7 @@ def box_to_slicing(start, stop):
         >>> assert bb_to_slicing([1,2,3], [4,5,6]) == np.s_[1:4, 2:5, 3:6]
     """
     return tuple( starmap( slice, zip(start, stop) ) )
+
 
 class TestMesh(unittest.TestCase):
 
@@ -47,6 +47,7 @@ class TestMesh(unittest.TestCase):
         max_nonzero_coord = np.transpose(binary_vol.nonzero()).max(axis=0)
         
         self.nonzero_box = np.array( [min_nonzero_coord, 1+max_nonzero_coord] )
+
 
     def test(self):
         # Pretend the data was downsampled and translated,
@@ -110,6 +111,7 @@ class TestMesh(unittest.TestCase):
 #         with open('/tmp/test-mesh-simplified.drc', 'wb') as f:
 #             f.write(mesh.serialize(fmt='drc'))
 
+
     def test_tiny_array(self):
         """
         Tiny arrays trigger an exception in skimage, so they must be padded first.
@@ -117,6 +119,7 @@ class TestMesh(unittest.TestCase):
         """
         one_voxel = np.ones((1,1,1), np.uint8)
         _mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)] )
+
 
     def test_solid_array(self):
         """
@@ -131,6 +134,7 @@ class TestMesh(unittest.TestCase):
         assert mesh.normals_zyx.shape == (0,3)
         assert (mesh.box == box).all()
 
+
     def test_empty_mesh(self):
         """
         What happens when we call functions on an empty mesh?
@@ -141,6 +145,7 @@ class TestMesh(unittest.TestCase):
         mesh.serialize(fmt='obj')
         mesh.serialize(fmt='drc')
         concatenate_meshes((mesh, mesh))
+
 
     def test_smoothing_trivial(self):
         vertices_zyx = np.array([[0.0, 0.0, 0.0],
@@ -154,6 +159,7 @@ class TestMesh(unittest.TestCase):
         average_vertex = vertices_zyx.sum(axis=0) / 3
         mesh.laplacian_smooth(1)
         assert (mesh.vertices_zyx == average_vertex).all()
+
 
     def test_smoothing_hexagon(self):
         """
@@ -208,6 +214,7 @@ class TestMesh(unittest.TestCase):
         mesh.simplify(0.2)
         #mesh.serialize('/tmp/x-smoothed-simplified.obj')
 
+
     def test_stitch(self):
         vertices = np.zeros( (10,3), np.float32 )
         vertices[:,0] = np.arange(10)
@@ -246,6 +253,20 @@ class TestMesh(unittest.TestCase):
         assert (mesh.faces == remapped_faces).all()
         assert (mesh.vertices_zyx == reduced_vertices).all()
 
+
+    def test_pickling(self):
+        mesh = Mesh.from_binary_vol( self.binary_vol )
+        pickled = pickle.dumps(mesh)
+        unpickled = pickle.loads(pickled)
+        
+        # It's not easy to verify that unpickled is identical,
+        # since draco may re-order vertices and faces.
+        # The validity of our draco encoding functions is tested elsewhere,
+        # so here we just check for vertex/face count
+        assert len(mesh.vertices_zyx) == len(unpickled.vertices_zyx)
+        assert len(mesh.faces) == len(unpickled.faces)
+
+
 class TestConcatenate(unittest.TestCase):
 
     def test_concatenate(self):
@@ -279,6 +300,7 @@ class TestConcatenate(unittest.TestCase):
         expected_faces[len(faces_1)+len(faces_2):] += len(vertexes_2)
 
         assert (combined_mesh.faces == expected_faces).all()
+
 
 if __name__ == "__main__":
     unittest.main()
