@@ -43,6 +43,7 @@ class Mesh:
                 Yes, currently, pickling has the SIDE-EFFECT of discarding the normals.  
         """
         self.pickle_with_draco = pickle_with_draco
+        self._destroyed = False
         
         # Note: When restoring from pickled data, vertices and faces
         #       are restored lazily, upon first access.
@@ -263,42 +264,55 @@ class Mesh:
         If self.pickle_with_draco is True, compress the mesh to a buffer with draco
         (vertices and faces only, for now), and discard the original arrays.
         """
-        if self.pickle_with_draco and self._draco_bytes is None and len(self._vertices_zyx) > 0:
-            self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._faces)
-            self._vertices_zyx = None
-            self._faces = None
-            
-            # current version of our draco encoding functions doesn't support normals.
-            # Discard them.
-            self._normals_zyx = np.zeros((0,3), np.float32)
+        if self.pickle_with_draco:
+            self.compress()
         return self.__dict__
+
+    def destroy(self):
+        """
+        Clear the mesh data.
+        Release all of our big members.
+        Useful for spark workflows, in which you don't immediately 
+        all references to the mesh, but you know you're done with it.
+        """
+        self._draco_bytes = None
+        self._vertices_zyx = None
+        self._faces = None
+        self._normals_zyx = None
+        self._destroyed = True
 
     @property
     def vertices_zyx(self):
+        assert not self._destroyed
         if self._vertices_zyx is None:
             self._decode_from_pickled_draco()
         return self._vertices_zyx
 
     @vertices_zyx.setter
     def vertices_zyx(self, new_vertices_zyx):
+        assert not self._destroyed
         self._vertices_zyx = new_vertices_zyx
 
     @property
     def faces(self):
+        assert not self._destroyed
         if self._faces is None:
             self._decode_from_pickled_draco()
         return self._faces
 
     @faces.setter
     def faces(self, new_faces):
+        assert not self._destroyed
         self._faces = new_faces
 
     @property
     def normals_zyx(self):
+        assert not self._destroyed
         return self._normals_zyx
     
     @normals_zyx.setter
     def normals_zyx(self, new_normals_zyx):
+        assert not self._destroyed
         self._normals_zyx = new_normals_zyx
 
     def _decode_from_pickled_draco(self):
