@@ -258,6 +258,18 @@ class Mesh:
             mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False)
         return mesh
 
+    def compress(self):
+        if self._draco_bytes is None and len(self._vertices_zyx) > 0:
+            # current version of our draco encoding functions doesn't support normals.
+            # Discard them.
+            self._normals_zyx = np.zeros((0,3), np.float32)
+
+            self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._faces)
+            self._vertices_zyx = None
+            self._faces = None
+        
+        return len(self._draco_bytes)
+        
     def __getstate__(self):
         """
         Pickle representation.
