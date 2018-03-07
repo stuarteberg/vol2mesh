@@ -254,7 +254,7 @@ class Mesh:
 
         mesh = concatenate_meshes(meshes)
         if stitch:
-            mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=True)
+            mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False)
         return mesh
 
     def __getstate__(self):
@@ -388,7 +388,7 @@ class Mesh:
         self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces)
         
 
-    def simplify(self, fraction, recompute_normals=True):
+    def simplify(self, fraction, recompute_normals=False):
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
         """
@@ -429,7 +429,7 @@ class Mesh:
             raise RuntimeError(msg)
 
 
-    def laplacian_smooth(self, iterations=1, recompute_normals=True):
+    def laplacian_smooth(self, iterations=1, recompute_normals=False):
         """
         Smooth the mesh in-place.
          
