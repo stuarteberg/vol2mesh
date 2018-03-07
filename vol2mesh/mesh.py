@@ -268,6 +268,8 @@ class Mesh:
             self._vertices_zyx = None
             self._faces = None
         
+        if self._draco_bytes is None:
+            return 0
         return len(self._draco_bytes)
         
     def __getstate__(self):
@@ -543,7 +545,7 @@ class Mesh:
         elif fmt is None:
             fmt = 'obj'
             
-        assert fmt in ('obj', 'drc')
+        assert fmt in ('obj', 'drc'), f"Unknown format: {fmt}"
         
         if len(self.vertices_zyx) == 0:
             if path:

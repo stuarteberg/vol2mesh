@@ -51,7 +51,7 @@ class TestMesh(unittest.TestCase):
         self.nonzero_box = np.array( [min_nonzero_coord, 1+max_nonzero_coord] )
 
 
-    def test(self):
+    def test_basic(self):
         # Pretend the data was downsampled and translated,
         # and therefore the mesh requires upscaling and translation
         data_box = np.array(self.data_box)
@@ -113,6 +113,41 @@ class TestMesh(unittest.TestCase):
 #         with open('/tmp/test-mesh-simplified.drc', 'wb') as f:
 #             f.write(mesh.serialize(fmt='drc'))
 
+    def test_aaa_blockwise_simple(self):
+        _ = 0
+        img = [[_,_,_,_, _,1,_,_],
+               [_,1,_,_, _,_,_,_],
+               [_,_,1,1, 1,1,1,_],
+               [_,1,1,1, 1,1,1,_],
+
+               [_,1,1,1, 1,1,1,_],
+               [_,1,1,1, 1,1,1,_],
+               [_,1,1,1, 1,1,1,_],
+               [_,_,_,_, _,_,_,_]]
+        
+        vol = np.zeros((3,8,8), dtype=bool)
+        vol[1] = img
+
+        blocks = (vol[:, 0:4, 0:4],
+                  vol[:, 0:4, 4:8],
+                  vol[:, 4:8, 0:4],
+                  vol[:, 4:8, 4:8])
+        
+        starts = [[0,0,0],
+                  [0,0,4],
+                  [0,4,0],
+                  [0,4,4]]
+        
+        starts = np.array(starts)
+        boxes = np.zeros((4,2,3), np.uint32)
+        boxes[:,0,:] = starts
+        boxes[:,1,:] = starts + (3,4,4)
+
+        mesh = Mesh.from_binary_blocks(blocks[3:4], boxes[3:4], stitch=False)
+        mesh.serialize('/tmp/simple-blocks.obj')
+        
+        print(np.asarray(sorted(mesh.vertices_zyx.tolist())))
+        
 
     def test_tiny_array(self):
         """
@@ -146,6 +181,7 @@ class TestMesh(unittest.TestCase):
         mesh.laplacian_smooth(2)
         mesh.serialize(fmt='obj')
         mesh.serialize(fmt='drc')
+        mesh.compress()
         concatenate_meshes((mesh, mesh))
 
 
