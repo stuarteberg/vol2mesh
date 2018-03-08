@@ -16,7 +16,7 @@ from .io_utils import TemporaryNamedPipe, AutoDeleteDir
 
 logger = logging.getLogger(__name__)
 
-DEBUG_DRACO = False
+DRACO_USE_PIPE = False
 
 class Mesh:
     """
@@ -155,7 +155,7 @@ class Mesh:
 
 
     @classmethod
-    def from_binary_vol(cls, downsampled_volume_zyx, fullres_box_zyx=None, method='skimage'):
+    def from_binary_vol(cls, downsampled_volume_zyx, fullres_box_zyx=None, method='skimage', step_size=1):
         """
         Alternate constructor.
         Run marching cubes on the given volume and return a Mesh object.
@@ -190,7 +190,7 @@ class Mesh:
                     padding = np.maximum([0,0,0], padding)
                     downsampled_volume_zyx = np.pad( downsampled_volume_zyx, tuple(zip(padding, padding)), 'constant' )
 
-                vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, step_size=1)
+                vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, step_size=step_size)
                 
                 # Skimage assumes that the coordinate origin is CENTERED inside pixel (0,0,0),
                 # whereas we assume that the origin is the UPPER-LEFT corner of pixel (0,0,0).
@@ -571,8 +571,8 @@ class Mesh:
             with open(mesh_path, 'wb') as mesh_file, BytesIO(obj_bytes) as obj_stream:
                 copyfileobj(obj_stream, mesh_file)
 
-            global DEBUG_DRACO
-            if DEBUG_DRACO:
+            global DRACO_USE_PIPE
+            if not DRACO_USE_PIPE:
                 # Write the .drc file to disk and read it that way,
                 # instead of using a PIPE to save RAM.
                 drc_path = f"{mesh_dir}/mesh.drc"
