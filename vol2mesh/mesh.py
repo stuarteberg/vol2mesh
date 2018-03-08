@@ -534,7 +534,7 @@ class Mesh:
             self.recompute_normals()
 
 
-    def serialize(self, path=None, fmt=None):
+    def serialize(self, path=None, fmt=None, add_normals=True):
         """
         Serialize the mesh data in either .obj or .drc format.
         If path is given, write to that file.
@@ -552,6 +552,9 @@ class Mesh:
                 open(path, 'wb').close()
                 return
             return b''
+        
+        if add_normals and len(self.normals_zyx) == 0:
+            self.recompute_normals()
         
         obj_bytes = write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 

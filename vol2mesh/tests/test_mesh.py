@@ -113,7 +113,11 @@ class TestMesh(unittest.TestCase):
 #         with open('/tmp/test-mesh-simplified.drc', 'wb') as f:
 #             f.write(mesh.serialize(fmt='drc'))
 
-    def test_aaa_blockwise_simple(self):
+    def test_blockwise_simple(self):
+        """
+        Simple test case to manually explore the output
+        of marching cubes as computed in blocks without halo.
+        """
         _ = 0
         img = [[_,_,_,_, _,1,_,_],
                [_,1,_,_, _,_,_,_],
@@ -144,9 +148,9 @@ class TestMesh(unittest.TestCase):
         boxes[:,1,:] = starts + (3,4,4)
 
         mesh = Mesh.from_binary_blocks(blocks[3:4], boxes[3:4], stitch=False)
-        mesh.serialize('/tmp/simple-blocks.obj')
+        #mesh.serialize('/tmp/simple-blocks.obj')
         
-        print(np.asarray(sorted(mesh.vertices_zyx.tolist())))
+        #print(np.asarray(sorted(mesh.vertices_zyx.tolist())))
         
 
     def test_tiny_array(self):
