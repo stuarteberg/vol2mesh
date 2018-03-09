@@ -442,16 +442,16 @@ class Mesh:
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
         """
+        # Normals are about to get discarded and recomputed anyway,
+        # so delete them now to save some RAM and serialization time.
+        self.normals_zyx = np.array((0,3), dtype=np.float32)
+        
         # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).
         # We have to check for this in advance because we can't gracefully handle the error.
         # https://github.com/neurolabusc/Fast-Quadric-Mesh-Simplification-Pascal-/blob/master/c_code/Main.cpp
         if fraction is None or fraction == 1.0 or (len(self.faces) * fraction <= 4):
             return self
 
-        # Normals are about to get discarded and recomputed anyway,
-        # so delete them now to save some RAM and serialization time.
-        self.normals_zyx = np.array((0,3), dtype=np.float32)
-        
         obj_bytes = write_obj(self.vertices_zyx, self.faces)
         bytes_stream = BytesIO(obj_bytes)
 
@@ -645,9 +645,19 @@ def concatenate_meshes(meshes):
     normals_counts = np.fromiter((len(mesh.normals_zyx) for mesh in meshes), np.int64, len(meshes))
     face_counts = np.fromiter((len(mesh.faces) for mesh in meshes), np.int64, len(meshes))
 
-    assert (vertex_counts == normals_counts).all() or not normals_counts.any(), \
-        "Mesh normals do not correspond to vertices.\n"\
-        "(Either exclude all normals, more make sure they match the vertices in every mesh.)"
+    if (vertex_counts != normals_counts).any() and normals_counts.any():
+        mismatches = (vertex_counts != normals_counts).nonzero()[0]
+        first_mismatch = mismatches[0]
+        output_path = f'/tmp/mismatched-mesh-{first_mismatch}.obj'
+        meshes[first_mismatch].serialize(output_path)
+        
+        import socket
+        hostname = socket.gethostname()
+        msg = ("Mesh normals do not correspond to vertices.\n"
+               "(Either exclude all normals, more make sure they match the vertices in every mesh.)\n"
+               f"There were {len(mismatches)} mismatches out of {len(meshes)}\n"
+               f"Wrote first mismatched mesh to {output_path} (host: {hostname})\n")
+        raise RuntimeError(msg)
     
     # vertices and normals as simply concatenated
     concatenated_vertices = np.concatenate( [mesh.vertices_zyx for mesh in meshes] )

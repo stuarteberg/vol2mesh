@@ -319,28 +319,35 @@ class TestMesh(unittest.TestCase):
 
 class TestConcatenate(unittest.TestCase):
 
+    def setUp(self):
+        self.vertexes_1 = np.array([[0,0,0],
+                                    [0,1,0],
+                                    [0,1,1]])
+
+        self.faces_1 = np.array([[2,1,0]])
+
+        self.vertexes_2 = np.array([[0,0,1],
+                                    [0,2,0],
+                                    [0,2,2]])
+
+        self.faces_2 = np.array([[2,1,0],
+                                 [1,2,0]])
+
+        self.vertexes_3 = np.array([[1,0,1],
+                                    [1,2,0],
+                                    [1,2,2]])
+
+        self.faces_3 = np.array([[1,2,0]])
+
+        self.mesh_1 = Mesh(self.vertexes_1, self.faces_1)
+        self.mesh_2 = Mesh(self.vertexes_2, self.faces_2)
+        self.mesh_3 = Mesh(self.vertexes_3, self.faces_3)
+        
+
     def test_concatenate(self):
-        vertexes_1 = np.array([[0,0,0],
-                               [0,1,0],
-                               [0,1,1]])
-        faces_1 = np.array([[2,1,0]])
-
-        vertexes_2 = np.array([[0,0,1],
-                               [0,2,0],
-                               [0,2,2]])
-
-        faces_2 = np.array([[2,1,0],
-                            [1,2,0]])
-
-        vertexes_3 = np.array([[1,0,1],
-                               [1,2,0],
-                               [1,2,2]])
-
-        faces_3 = np.array([[1,2,0]])
-
-        mesh_1 = Mesh(vertexes_1, faces_1)
-        mesh_2 = Mesh(vertexes_2, faces_2)
-        mesh_3 = Mesh(vertexes_3, faces_3)
+        mesh_1, mesh_2, mesh_3 = self.mesh_1, self.mesh_2, self.mesh_3
+        vertexes_1, vertexes_2, vertexes_3 = self.vertexes_1, self.vertexes_2, self.vertexes_3
+        faces_1, faces_2, faces_3 = self.faces_1, self.faces_2, self.faces_3
         
         combined_mesh = concatenate_meshes((mesh_1, mesh_2, mesh_3))
         assert (combined_mesh.vertices_zyx == np.concatenate((vertexes_1, vertexes_2, vertexes_3))).all()
@@ -351,6 +358,18 @@ class TestConcatenate(unittest.TestCase):
 
         assert (combined_mesh.faces == expected_faces).all()
 
+    def test_mismatches(self):
+        mesh_1, mesh_2, mesh_3 = self.mesh_1, self.mesh_2, self.mesh_3
+        mesh_1.recompute_normals()
+
+        try:
+            _combined_mesh = concatenate_meshes((mesh_1, mesh_2, mesh_3))
+        except RuntimeError:
+            pass
+        else:
+            assert False, "Expected a RuntimeError, but did not see one."
+
+        
 
 if __name__ == "__main__":
     unittest.main()
