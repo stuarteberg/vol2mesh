@@ -358,9 +358,31 @@ class TestConcatenate(unittest.TestCase):
 
         assert (combined_mesh.faces == expected_faces).all()
 
+    def test_concatenate_with_normals(self):
+        mesh_1, mesh_2, mesh_3 = self.mesh_1, self.mesh_2, self.mesh_3
+        vertexes_1, vertexes_2, vertexes_3 = self.vertexes_1, self.vertexes_2, self.vertexes_3
+        faces_1, faces_2, faces_3 = self.faces_1, self.faces_2, self.faces_3
+
+        mesh_1.recompute_normals()
+        mesh_2.recompute_normals()
+        mesh_3.recompute_normals()
+        
+        combined_mesh = concatenate_meshes((mesh_1, mesh_2, mesh_3))
+        assert (combined_mesh.vertices_zyx == np.concatenate((vertexes_1, vertexes_2, vertexes_3))).all()
+        
+        expected_faces = np.concatenate((faces_1, faces_2, faces_3))
+        expected_faces[len(faces_1):] += len(vertexes_1)
+        expected_faces[len(faces_1)+len(faces_2):] += len(vertexes_2)
+
+        assert (combined_mesh.faces == expected_faces).all()
+
     def test_mismatches(self):
         mesh_1, mesh_2, mesh_3 = self.mesh_1, self.mesh_2, self.mesh_3
         mesh_1.recompute_normals()
+        
+        # let's really mess up mesh 3 -- give it the wrong number of normals
+        mesh_3.recompute_normals()
+        mesh_3.normals_zyx = mesh_3.normals_zyx[:-1]
 
         try:
             _combined_mesh = concatenate_meshes((mesh_1, mesh_2, mesh_3))
@@ -369,7 +391,6 @@ class TestConcatenate(unittest.TestCase):
         else:
             assert False, "Expected a RuntimeError, but did not see one."
 
-        
 
 if __name__ == "__main__":
     unittest.main()

@@ -645,24 +645,12 @@ def concatenate_meshes(meshes):
     """
     if not isinstance(meshes, list):
         meshes = list(meshes)
+
     vertex_counts = np.fromiter((len(mesh.vertices_zyx) for mesh in meshes), np.int64, len(meshes))
-    normals_counts = np.fromiter((len(mesh.normals_zyx) for mesh in meshes), np.int64, len(meshes))
     face_counts = np.fromiter((len(mesh.faces) for mesh in meshes), np.int64, len(meshes))
 
-    if  normals_counts.any() and (vertex_counts != normals_counts).any():
-        mismatches = (vertex_counts != normals_counts).nonzero()[0]
-        first_mismatch = mismatches[0]
-        output_path = f'/tmp/mismatched-mesh-{first_mismatch}.obj'
-        meshes[first_mismatch].serialize(output_path, add_normals=False)
-        
-        import socket
-        hostname = socket.gethostname()
-        msg = ("Mesh normals do not correspond to vertices.\n"
-               "(Either exclude all normals, more make sure they match the vertices in every mesh.)\n"
-               f"There were {len(mismatches)} mismatches out of {len(meshes)}\n"
-               f"Wrote first mismatched mesh to {output_path} (host: {hostname})\n")
-        raise RuntimeError(msg)
-    
+    _verify_concatenate_inputs(meshes, vertex_counts)
+
     # vertices and normals as simply concatenated
     concatenated_vertices = np.concatenate( [mesh.vertices_zyx for mesh in meshes] )
     concatenated_normals = np.concatenate( [mesh.normals_zyx for mesh in meshes] )
@@ -686,3 +674,48 @@ def concatenate_meshes(meshes):
 
     return Mesh( concatenated_vertices, concatenated_faces, concatenated_normals, total_box )
 
+def _verify_concatenate_inputs(meshes, vertex_counts):
+    normals_counts = np.fromiter((len(mesh.normals_zyx) for mesh in meshes), np.int64, len(meshes))
+    if not normals_counts.any() or (vertex_counts == normals_counts).all():
+        # Looks good
+        return
+
+    # Uh-oh, we have a problem:
+    # Either some meshes have normals while others don't, or some meshes
+    # have normals that don't even match their OWN vertex count!
+        
+    import socket
+    hostname = socket.gethostname()
+
+    mismatches = (vertex_counts != normals_counts).nonzero()[0]
+
+    msg = ("Mesh normals do not correspond to vertices.\n"
+           "(Either exclude all normals, more make sure they match the vertices in every mesh.)\n"
+           f"There were {len(mismatches)} mismatches out of {len(meshes)}\n")
+
+    bad_mismatches = (normals_counts != vertex_counts) & (normals_counts != 0)
+    if bad_mismatches.any():
+        # Mismatches where the normals and vertices didn't even line up in the same mesh.
+        # This should never happen.
+        first_bad_mismatch = bad_mismatches.nonzero()[0][0]
+        output_path = f'/tmp/BAD-mismatched-mesh-{first_bad_mismatch}.obj'
+        meshes[first_bad_mismatch].serialize(output_path, add_normals=False)
+        msg += f"Wrote first BAD mismatched mesh to {output_path} (host: {hostname})\n"
+    
+    missing_normals = (normals_counts != vertex_counts) & (normals_counts == 0)
+    if missing_normals.any():
+        # Mismatches where the normals and vertices didn't even line up in the same mesh.
+        # This should never happen.
+        first_missing_normals = missing_normals.nonzero()[0][0]
+        output_path = f'/tmp/mismatched-mesh-no-normals-{first_missing_normals}.obj'
+        meshes[first_missing_normals].serialize(output_path, add_normals=False)
+        msg += f"Wrote first mismatched (missing normals) mesh to {output_path} (host: {hostname})\n"
+    
+    matching_meshes = (normals_counts == vertex_counts) & (normals_counts > 0)
+    if matching_meshes.any():
+        first_matching_mesh = matching_meshes.nonzero()[0][0]
+        output_path = f'/tmp/first-matching-mesh-{first_matching_mesh}.obj'
+        meshes[first_matching_mesh].serialize(output_path, add_normals=False)
+        msg += f"Wrote first matching mesh to {output_path} (host: {hostname})\n"
+    
+    raise RuntimeError(msg)
