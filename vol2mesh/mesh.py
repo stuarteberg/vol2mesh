@@ -640,7 +640,8 @@ def concatenate_meshes(meshes):
     renumbering the face vertices as needed, and expanding the bounding box
     to encompass the union of the meshes.
     """
-    assert hasattr(meshes, '__len__')
+    if not isinstance(meshes, list):
+        meshes = list(meshes)
     vertex_counts = np.fromiter((len(mesh.vertices_zyx) for mesh in meshes), np.int64, len(meshes))
     normals_counts = np.fromiter((len(mesh.normals_zyx) for mesh in meshes), np.int64, len(meshes))
     face_counts = np.fromiter((len(mesh.faces) for mesh in meshes), np.int64, len(meshes))
