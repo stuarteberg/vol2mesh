@@ -698,8 +698,9 @@ def _verify_concatenate_inputs(meshes, vertex_counts):
         # Mismatches where the normals and vertices didn't even line up in the same mesh.
         # This should never happen.
         first_bad_mismatch = bad_mismatches.nonzero()[0][0]
-        output_path = f'/tmp/BAD-mismatched-mesh-{first_bad_mismatch}.obj'
-        meshes[first_bad_mismatch].serialize(output_path, add_normals=False)
+        mesh = meshes[first_bad_mismatch]
+        output_path = f'/tmp/BAD-mismatched-mesh-v{mesh.vertices_zyx.shape[0]}-n{mesh.normals_zyx.shape[0]}-{first_bad_mismatch}.obj'
+        mesh.serialize(output_path, add_normals=False)
         msg += f"Wrote first BAD mismatched mesh to {output_path} (host: {hostname})\n"
     
     missing_normals = (normals_counts != vertex_counts) & (normals_counts == 0)
