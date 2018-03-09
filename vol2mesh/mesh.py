@@ -56,6 +56,9 @@ class Mesh:
             self._normals_zyx = np.zeros((0,3), dtype=np.int32)
         else:
             self._normals_zyx = np.asarray(normals_zyx, np.float32)
+            assert self._normals_zyx.shape in (self.vertices_zyx.shape, (0,3)), \
+                "Normals were provided, but they don't match the shape of the vertices:\n" \
+                f" {self._normals_zyx.shape} != {self.vertices_zyx.shape}"
 
         for a in (self._vertices_zyx, self._faces, self._normals_zyx):
             assert a.ndim == 2 and a.shape[1] == 3, f"Input array has wrong shape: {a.shape}"
@@ -556,7 +559,7 @@ class Mesh:
             self.recompute_normals()
 
 
-    def serialize(self, path=None, fmt=None, add_normals=True):
+    def serialize(self, path=None, fmt=None, add_normals=False):
         """
         Serialize the mesh data in either .obj or .drc format.
         If path is given, write to that file.
@@ -646,11 +649,11 @@ def concatenate_meshes(meshes):
     normals_counts = np.fromiter((len(mesh.normals_zyx) for mesh in meshes), np.int64, len(meshes))
     face_counts = np.fromiter((len(mesh.faces) for mesh in meshes), np.int64, len(meshes))
 
-    if (vertex_counts != normals_counts).any() and normals_counts.any():
+    if  normals_counts.any() and (vertex_counts != normals_counts).any():
         mismatches = (vertex_counts != normals_counts).nonzero()[0]
         first_mismatch = mismatches[0]
         output_path = f'/tmp/mismatched-mesh-{first_mismatch}.obj'
-        meshes[first_mismatch].serialize(output_path)
+        meshes[first_mismatch].serialize(output_path, add_normals=False)
         
         import socket
         hostname = socket.gethostname()
