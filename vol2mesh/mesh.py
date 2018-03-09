@@ -447,7 +447,7 @@ class Mesh:
         """
         # Normals are about to get discarded and recomputed anyway,
         # so delete them now to save some RAM and serialization time.
-        self.normals_zyx = np.array((0,3), dtype=np.float32)
+        self.normals_zyx = np.zeros((0,3), dtype=np.float32)
         
         # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).
         # We have to check for this in advance because we can't gracefully handle the error.
