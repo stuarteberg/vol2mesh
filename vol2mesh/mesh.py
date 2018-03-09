@@ -10,7 +10,7 @@ from skimage.measure import marching_cubes_lewiner
 
 from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, decode_drc_bytes_to_faces
 
-from .normals import compute_vertex_normals
+from .normals import compute_face_normals, compute_vertex_normals
 from .obj_utils import write_obj, read_obj
 from .io_utils import TemporaryNamedPipe, AutoDeleteDir
 
@@ -106,8 +106,6 @@ class Mesh:
             msg = f"Unknown file type: {path}"
             logger.error(msg)
             raise RuntimeError(msg)
-
-        return Mesh
 
 
     @classmethod
@@ -412,8 +410,32 @@ class Mesh:
             self.recompute_normals()
 
 
-    def recompute_normals(self):
-        self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces)
+    def recompute_normals(self, remove_degenerate_faces=True):
+        """
+        Compute the normals for this mesh.
+        
+        remove_degenerate_faces:
+            If True, faces with no area (i.e. just lines) will be removed.
+            (They have no effect on the vertex normals either way.)
+        """
+        face_normals = compute_face_normals(self.vertices_zyx, self.faces)
+
+        if remove_degenerate_faces:
+            # Degenerate faces ended up with a normal of 0,0,0.  Remove those faces.
+            # (Technically, we might be left with unused vertices after this,
+            #  but removing them requires relabeling the faces.
+            #  Call stitch_adjacent_faces() if you want to remove them.)
+            good_faces = face_normals.any(axis=1)
+            if not good_faces.all():
+                self.faces = self.faces[good_faces, :]
+            del good_faces
+
+        if len(self.faces) == 0:
+            # No faces left. Discard all remaining vertices and normals.
+            self.vertices_zyx = np.zeros((0,3), np.float32)
+            self.normals_zyx = np.zeros((0,3), np.float32)
+        else:
+            self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces, face_normals=face_normals)
         
 
     def simplify(self, fraction, recompute_normals=False):
