@@ -254,7 +254,7 @@ class Mesh:
 
         mesh = concatenate_meshes(meshes)
         if stitch:
-            mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False)
+            mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True)
         return mesh
 
     def compress(self):
@@ -333,11 +333,13 @@ class Mesh:
         self.normals_zyx = normals_xyz[:, ::-1]
         self._draco_bytes = None
 
-    def stitch_adjacent_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False):
+    def stitch_adjacent_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True):
         """
         Search for duplicate vertices and remove all references to them in self.faces,
         by replacing them with the index of the first matching vertex in the list.
         Works in-place.
+        
+        Note: Normals are discarded.  Call recompute_normals() if you need them.
         
         Args:
             drop_duplicate_vertices:
@@ -406,9 +408,6 @@ class Mesh:
         if drop_duplicate_faces:
             _drop_duplicate_faces()
 
-        if recompute_normals:
-            self.recompute_normals()
-
 
     def recompute_normals(self, remove_degenerate_faces=True):
         """
@@ -438,9 +437,11 @@ class Mesh:
             self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces, face_normals=face_normals)
         
 
-    def simplify(self, fraction, recompute_normals=False):
+    def simplify(self, fraction):
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
+        
+        Note: Normals are discarded.  Call recompute_normals() if you need them.
         """
         # Normals are about to get discarded and recomputed anyway,
         # so delete them now to save some RAM and serialization time.
@@ -468,9 +469,6 @@ class Mesh:
         self.vertices_zyx, self.faces, _empty_normals = read_obj(mesh_stream)
         mesh_stream.close()
 
-        if recompute_normals:
-            self.recompute_normals()
-        
         proc.wait(timeout=1.0)
         if proc.returncode != 0:
             msg = f"Child process returned an error code: {proc.returncode}.\n"\
@@ -479,7 +477,7 @@ class Mesh:
             raise RuntimeError(msg)
 
 
-    def laplacian_smooth(self, iterations=1, recompute_normals=False):
+    def laplacian_smooth(self, iterations=1):
         """
         Smooth the mesh in-place.
          
@@ -490,6 +488,8 @@ class Mesh:
         Disadvantage: Results in overall shrinkage of the mesh, especially for many iterations.
                       (But nearly all smoothing techniques cause at least some shrinkage.)
 
+        Note: Normals are discarded.  Call recompute_normals() if you need them.
+        
         Args:
             iterations:
                 How many passes to take over the data.
@@ -551,12 +551,9 @@ class Mesh:
 
             # Swap (save RAM allocation overhead by reusing the new_vertices_zyx array between iterations)
             self.vertices_zyx, new_vertices_zyx = new_vertices_zyx, self.vertices_zyx
-        
-        if recompute_normals:
-            self.recompute_normals()
 
 
-    def serialize(self, path=None, fmt=None, add_normals=False):
+    def serialize(self, path=None, fmt=None):
         """
         Serialize the mesh data in either .obj or .drc format.
         If path is given, write to that file.
@@ -574,9 +571,6 @@ class Mesh:
                 open(path, 'wb').close()
                 return
             return b''
-        
-        if add_normals and len(self.normals_zyx) == 0:
-            self.recompute_normals()
         
         obj_bytes = write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
@@ -697,7 +691,7 @@ def _verify_concatenate_inputs(meshes, vertex_counts):
         first_bad_mismatch = bad_mismatches.nonzero()[0][0]
         mesh = meshes[first_bad_mismatch]
         output_path = f'/tmp/BAD-mismatched-mesh-v{mesh.vertices_zyx.shape[0]}-n{mesh.normals_zyx.shape[0]}-{first_bad_mismatch}.obj'
-        mesh.serialize(output_path, add_normals=False)
+        mesh.serialize(output_path)
         msg += f"Wrote first BAD mismatched mesh to {output_path} (host: {hostname})\n"
     
     missing_normals = (normals_counts != vertex_counts) & (normals_counts == 0)
@@ -706,14 +700,14 @@ def _verify_concatenate_inputs(meshes, vertex_counts):
         # This should never happen.
         first_missing_normals = missing_normals.nonzero()[0][0]
         output_path = f'/tmp/mismatched-mesh-no-normals-{first_missing_normals}.obj'
-        meshes[first_missing_normals].serialize(output_path, add_normals=False)
+        meshes[first_missing_normals].serialize(output_path)
         msg += f"Wrote first mismatched (missing normals) mesh to {output_path} (host: {hostname})\n"
     
     matching_meshes = (normals_counts == vertex_counts) & (normals_counts > 0)
     if matching_meshes.any():
         first_matching_mesh = matching_meshes.nonzero()[0][0]
         output_path = f'/tmp/first-matching-mesh-{first_matching_mesh}.obj'
-        meshes[first_matching_mesh].serialize(output_path, add_normals=False)
+        meshes[first_matching_mesh].serialize(output_path)
         msg += f"Wrote first matching mesh to {output_path} (host: {hostname})\n"
     
     raise RuntimeError(msg)
