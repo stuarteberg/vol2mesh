@@ -2,7 +2,6 @@ import os
 import logging
 import subprocess
 from io import BytesIO
-from shutil import copyfileobj
 
 import numpy as np
 import pandas as pd
@@ -12,7 +11,7 @@ from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, 
 
 from .normals import compute_face_normals, compute_vertex_normals
 from .obj_utils import write_obj, read_obj
-from .io_utils import TemporaryNamedPipe, AutoDeleteDir
+from .io_utils import TemporaryNamedPipe
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +74,7 @@ class Mesh:
             self.box = np.array( [ self.vertices_zyx.min(axis=0),
                                    np.ceil( self.vertices_zyx.max(axis=0) ) ] ).astype(np.int32)
 
+
     @classmethod
     def from_file(cls, path):
         """
@@ -83,22 +83,10 @@ class Mesh:
         """
         ext = os.path.splitext(path)[1]
         if ext == '.drc':
-            # Convert from draco to OBJ
-            # Use a pipe to avoid the need for the hard disk
-            draco_output_pipe = TemporaryNamedPipe('output.obj')
-            cmd = f"draco_decoder -i {path} -o {draco_output_pipe.path}" 
-            proc = subprocess.Popen(cmd, shell=True)
-            try:
-                with open(draco_output_pipe.path, 'rb') as obj_stream:
-                    vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
-                    proc.wait()
-                return Mesh(vertices_zyx, faces, normals_zyx)
-            finally:
-                if proc.returncode != 0:
-                    msg = f"Child process returned an error code: {proc.returncode}.\n"\
-                          f"Command was: {cmd}"
-                    logger.error(msg)
-                    raise RuntimeError(msg)
+            with open(path, 'rb') as drc_stream:
+                draco_bytes = drc_stream.read()
+            return Mesh.from_buffer(draco_bytes, 'drc')
+
         elif ext == '.obj':
             with open(path, 'rb') as obj_stream:
                 vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
@@ -130,27 +118,10 @@ class Mesh:
                 vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
                 return Mesh(vertices_zyx, faces, normals_zyx)
         elif fmt == 'drc':
-            # Convert from draco to OBJ
-            # Use a pipe for the output to avoid the need for the hard disk
-            # (We can't avoid using a file for the input.)
-            mesh_dir = AutoDeleteDir()
-            input_path = f"{mesh_dir}/input.drc"
-            with open(input_path, 'wb') as drc_file:
-                drc_file.write(serialized_bytes)
-            draco_output_pipe = TemporaryNamedPipe('output.obj')
-            cmd = f"draco_decoder -i {input_path} -o {draco_output_pipe.path}"
-            proc = subprocess.Popen(cmd, shell=True)
-            try:
-                with open(draco_output_pipe.path, 'rb') as obj_stream:
-                    vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
-                    proc.wait()
-                return Mesh(vertices_zyx, faces, normals_zyx)
-            finally:
-                if proc.returncode != 0:
-                    msg = f"Child process returned an error code: {proc.returncode}.\n"\
-                          f"Command was: {cmd}"
-                    logger.error(msg)
-                    raise RuntimeError(msg)
+            vertices_xyz, normals_xyz, faces = decode_drc_bytes_to_faces(serialized_bytes)
+            vertices_zyx = vertices_xyz[:,::-1]
+            normals_zyx = normals_xyz[:,::-1]
+            return Mesh(vertices_zyx, faces, normals_zyx)
 
 
     @classmethod
@@ -565,67 +536,33 @@ class Mesh:
             fmt = 'obj'
             
         assert fmt in ('obj', 'drc'), f"Unknown format: {fmt}"
-        
-        if len(self.vertices_zyx) == 0:
+
+        # Shortcut for empty mesh
+        # Returns an empty buffer regardless of output format        
+        empty_mesh = (self._draco_bytes is not None and self._draco_bytes == b'') or len(self.vertices_zyx)
+        if empty_mesh == 0:
             if path:
                 open(path, 'wb').close()
                 return
             return b''
-        
-        obj_bytes = write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
         if fmt == 'obj':
             if path:
                 with open(path, 'wb') as f:
-                    f.write(obj_bytes)
+                    write_obj(self.vertices_zyx, self.faces, self.normals_zyx, f)
             else:
-                return obj_bytes
+                return write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
         elif fmt == 'drc':
-            # Sadly, draco is incapable of reading from non-seekable inputs.
-            # It requires an actual input file, so we can't use a named pipe to avoid disk I/O.
-            # But at least we can use a pipe for the output...
-            mesh_dir = AutoDeleteDir()
-            mesh_path = f'{mesh_dir}/mesh.obj'
-            with open(mesh_path, 'wb') as mesh_file, BytesIO(obj_bytes) as obj_stream:
-                copyfileobj(obj_stream, mesh_file)
-
-            global DRACO_USE_PIPE
-            if not DRACO_USE_PIPE:
-                # Write the .drc file to disk and read it that way,
-                # instead of using a PIPE to save RAM.
-                drc_path = f"{mesh_dir}/mesh.drc"
-                cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {drc_path}'
-                try:
-                    subprocess.check_call(cmd, shell=True)
-                except:
-                    mesh_dir.skip_delete = True
-                    raise
-                with open(drc_path, 'rb') as f:
-                    drc_bytes = f.read()
-            else:
-                # Use a unix 'named pipe' to receive the output from the
-                # draco encoder without the need to write to the hard disk and read it.
-                draco_output_pipe = TemporaryNamedPipe('output.drc')
-                cmd = f'draco_encoder -cl 5 -i {mesh_path} -o {draco_output_pipe.path}'
-                proc = subprocess.Popen(cmd, shell=True)
-                with draco_output_pipe.open_stream('rb') as drc_stream:
-                    drc_bytes = drc_stream.read()
-
-                proc.wait(timeout=600.0) # 10 minutes
-                if proc.returncode != 0:
-                    msg = f"Child process returned an error code: {proc.returncode}.\n"\
-                          f"Command was: {cmd}\n\n"
-                    msg += "Input mesh was: \n\n"
-                    msg += obj_bytes.decode()
-                    logger.error(msg)
-                    raise RuntimeError(msg)
-
+            draco_bytes = self._draco_bytes
+            if draco_bytes is None:
+                draco_bytes = encode_faces_to_drc_bytes(self.vertices_zyx[:,::-1], self.normals_zyx[:,::-1], self.faces)
+            
             if path:
                 with open(path, 'wb') as f:
-                    f.write(drc_bytes)
+                    f.write(draco_bytes)
             else:
-                return drc_bytes
+                return draco_bytes
 
 
 def concatenate_meshes(meshes):
