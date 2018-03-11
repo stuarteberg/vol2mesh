@@ -38,9 +38,7 @@ class Mesh:
                 but it is useful to store it here for programmatic manipulation.)
             
             pickle_with_draco:
-                If True, pickling will be performed by encoding the vertices and faces via draco compression.
-                The normals, if any, will be DISCARDED.
-                Yes, currently, pickling has the SIDE-EFFECT of discarding the normals.  
+                If True, pickling will be performed by encoding the vertices, normals, and faces via draco compression.
         """
         self.pickle_with_draco = pickle_with_draco
         self._destroyed = False
@@ -261,12 +259,9 @@ class Mesh:
 
     def compress(self):
         if self._draco_bytes is None and len(self._vertices_zyx) > 0:
-            # current version of our draco encoding functions doesn't support normals.
-            # Discard them.
-            self._normals_zyx = np.zeros((0,3), np.float32)
-
-            self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._faces)
+            self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._normals_zyx[:,::-1], self._faces)
             self._vertices_zyx = None
+            self._normals_zyx = None
             self._faces = None
         
         if self._draco_bytes is None:
@@ -323,6 +318,8 @@ class Mesh:
     @property
     def normals_zyx(self):
         assert not self._destroyed
+        if self._normals_zyx is None:
+            self._decode_from_pickled_draco()
         return self._normals_zyx
     
     @normals_zyx.setter
@@ -331,10 +328,10 @@ class Mesh:
         self._normals_zyx = new_normals_zyx
 
     def _decode_from_pickled_draco(self):
-        vertices_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
+        vertices_xyz, normals_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
         self.vertices_zyx = vertices_xyz[:, ::-1]
+        self.normals_zyx = normals_xyz[:, ::-1]
         self._draco_bytes = None
-
 
     def stitch_adjacent_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True, recompute_normals=False):
         """
