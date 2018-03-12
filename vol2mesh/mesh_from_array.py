@@ -55,8 +55,8 @@ def mesh_from_array(volume_zyx,
         # Explicitly discard any normals the mesh had.
         mesh.normals_zyx = np.zeros( (0,3), dtype=np.float32 )
 
-    mesh.laplacian_smooth(smoothing_rounds, recompute_normals=False)
-    mesh.simplify( simplify_ratio, recompute_normals=False )
+    mesh.laplacian_smooth(smoothing_rounds)
+    mesh.simplify( simplify_ratio )
     
     if compute_normals:
         mesh.recompute_normals()
