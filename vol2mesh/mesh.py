@@ -1,4 +1,5 @@
 import os
+import glob
 import logging
 import subprocess
 from io import BytesIO
@@ -95,6 +96,18 @@ class Mesh:
             msg = f"Unknown file type: {path}"
             logger.error(msg)
             raise RuntimeError(msg)
+
+
+    @classmethod
+    def from_directory(cls, path):
+        """
+        Alternate constructor.
+        Read all mesh files (either .drc or .obj) from a
+        directory and concatenate them into one big mesh.
+        """
+        mesh_paths = glob.glob(f'{path}/*.drc') + glob.glob(f'{path}/*.obj')
+        meshes = map(Mesh.from_file, mesh_paths)
+        return concatenate_meshes(meshes)
 
 
     @classmethod
