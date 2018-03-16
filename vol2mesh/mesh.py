@@ -242,6 +242,16 @@ class Mesh:
         return mesh
 
     def compress(self):
+        # Sadly, we MUST remove degenerate faces before compressing with draco,
+        # whether or not normals are present, due to https://github.com/google/draco/issues/356
+        # Maybe draco > 1.2.5 will fix the problem.
+        # In the meantime, the easiest way to remove degenerate faces is to recompute the normals
+        # every time we encode to draco.
+        # (Technically, this workaround doesn't guard against ALMOST-degenerate faces, which draco might turn
+        # into degenerate faces when it reduces the quantization of the vertices.  But it seems to avoid the segfault for now.) 
+        if self.normals_zyx.shape[0] == 0:
+            self.recompute_normals(True)
+        
         if self._draco_bytes is None and len(self._vertices_zyx) > 0:
             self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._normals_zyx[:,::-1], self._faces)
             self._vertices_zyx = None
@@ -569,6 +579,8 @@ class Mesh:
         elif fmt == 'drc':
             draco_bytes = self._draco_bytes
             if draco_bytes is None:
+                if self.normals_zyx.shape[0] == 0:
+                    self.recompute_normals(True) # See comment in Mesh.compress()
                 draco_bytes = encode_faces_to_drc_bytes(self.vertices_zyx[:,::-1], self.normals_zyx[:,::-1], self.faces)
             
             if path:
