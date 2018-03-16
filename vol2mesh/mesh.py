@@ -466,7 +466,9 @@ class Mesh:
             logger.error(msg)
             raise RuntimeError(msg)
 
-        assert self.normals_zyx.shape == (0,3), f"{self.normals_zyx.shape} != (0,3)"
+        # Force normal reomputation to eliminate possible degenerate faces
+        # (Can decimation produce degenerate faces?)
+        self.recompute_normals(True)
 
     def laplacian_smooth(self, iterations=1):
         """
