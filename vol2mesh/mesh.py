@@ -1,6 +1,7 @@
 import os
 import glob
 import logging
+import functools
 import subprocess
 from io import BytesIO
 
@@ -264,6 +265,14 @@ class Mesh:
             self.compress()
         return self.__dict__
 
+    def _decode_from_pickled_draco(self):
+        vertices_xyz, normals_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
+        assert vertices_xyz.shape == normals_xyz.shape or normals_xyz.shape == (0,3), \
+            f"{vertices_xyz.shape} != {normals_xyz.shape}"
+        self._vertices_zyx = vertices_xyz[:, ::-1]
+        self._normals_zyx = normals_xyz[:, ::-1]
+        self._draco_bytes = None
+
     def destroy(self):
         """
         Clear the mesh data.
@@ -277,50 +286,45 @@ class Mesh:
         self._normals_zyx = None
         self._destroyed = True
 
+    def auto_unpickle(f):
+        @functools.wraps(f)
+        def wrapper(self, *args, **kwargs):
+            assert not self._destroyed
+            if self._vertices_zyx is None:
+                self._decode_from_pickled_draco()
+            return f(self, *args, **kwargs)
+        return wrapper
+
     @property
+    @auto_unpickle
     def vertices_zyx(self):
-        assert not self._destroyed
-        if self._vertices_zyx is None:
-            self._decode_from_pickled_draco()
         return self._vertices_zyx
 
     @vertices_zyx.setter
+    @auto_unpickle
     def vertices_zyx(self, new_vertices_zyx):
-        assert not self._destroyed
         self._vertices_zyx = new_vertices_zyx
 
     @property
+    @auto_unpickle
     def faces(self):
-        assert not self._destroyed
-        if self._faces is None:
-            self._decode_from_pickled_draco()
         return self._faces
 
     @faces.setter
+    @auto_unpickle
     def faces(self, new_faces):
-        assert not self._destroyed
         self._faces = new_faces
 
     @property
+    @auto_unpickle
     def normals_zyx(self):
-        assert not self._destroyed
-        if self._normals_zyx is None:
-            self._decode_from_pickled_draco()
         return self._normals_zyx
     
     @normals_zyx.setter
+    @auto_unpickle
     def normals_zyx(self, new_normals_zyx):
-        assert not self._destroyed
         self._normals_zyx = new_normals_zyx
-
-    def _decode_from_pickled_draco(self):
-        vertices_xyz, normals_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
-        assert vertices_xyz.shape == normals_xyz.shape or normals_xyz.shape == (0,3), \
-            f"{vertices_xyz.shape} != {normals_xyz.shape}"
-        self.vertices_zyx = vertices_xyz[:, ::-1]
-        self.normals_zyx = normals_xyz[:, ::-1]
-        self._draco_bytes = None
-
+    
     def stitch_adjacent_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True):
         """
         Search for duplicate vertices and remove all references to them in self.faces,
