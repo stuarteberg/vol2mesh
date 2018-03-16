@@ -242,17 +242,9 @@ class Mesh:
         return mesh
 
     def compress(self):
-        # Sadly, we MUST remove degenerate faces before compressing with draco,
-        # whether or not normals are present, due to https://github.com/google/draco/issues/356
-        # Maybe draco > 1.2.5 will fix the problem.
-        # In the meantime, the easiest way to remove degenerate faces is to recompute the normals
-        # every time we encode to draco.
-        # (Technically, this workaround doesn't guard against ALMOST-degenerate faces, which draco might turn
-        # into degenerate faces when it reduces the quantization of the vertices.  But it seems to avoid the segfault for now.) 
-        if self.normals_zyx.shape[0] == 0:
-            self.recompute_normals(True)
-        
         if self._draco_bytes is None and len(self._vertices_zyx) > 0:
+            assert self._vertices_zyx.shape == self._normals_zyx.shape or self._normals_zyx.shape == (0,3), \
+                f"{self._vertices_zyx.shape} != {self._normals_zyx.shape}"
             self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._normals_zyx[:,::-1], self._faces)
             self._vertices_zyx = None
             self._normals_zyx = None
@@ -323,6 +315,8 @@ class Mesh:
 
     def _decode_from_pickled_draco(self):
         vertices_xyz, normals_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
+        assert vertices_xyz.shape == normals_xyz.shape or normals_xyz.shape == (0,3), \
+            f"{vertices_xyz.shape} != {normals_xyz.shape}"
         self.vertices_zyx = vertices_xyz[:, ::-1]
         self.normals_zyx = normals_xyz[:, ::-1]
         self._draco_bytes = None
@@ -437,6 +431,8 @@ class Mesh:
         
         Note: Normals are discarded.  Call recompute_normals() if you need them.
         """
+        self.faces #HACK!! I need to make sure this is unpickled BEFORE setting the normals.
+        
         # Normals are about to get discarded and recomputed anyway,
         # so delete them now to save some RAM and serialization time.
         self.normals_zyx = np.zeros((0,3), dtype=np.float32)
@@ -459,7 +455,7 @@ class Mesh:
         proc = subprocess.Popen(cmd, shell=True)
         mesh_stream = simplify_output_pipe.open_stream('rb')
         
-        # The fq-mesh-simplify tool does not compute normals.  Compute them.
+        # The fq-mesh-simplify tool does not compute normals.
         self.vertices_zyx, self.faces, _empty_normals = read_obj(mesh_stream)
         mesh_stream.close()
 
@@ -470,6 +466,7 @@ class Mesh:
             logger.error(msg)
             raise RuntimeError(msg)
 
+        assert self.normals_zyx.shape == (0,3), f"{self.normals_zyx.shape} != (0,3)"
 
     def laplacian_smooth(self, iterations=1):
         """
@@ -482,16 +479,12 @@ class Mesh:
         Disadvantage: Results in overall shrinkage of the mesh, especially for many iterations.
                       (But nearly all smoothing techniques cause at least some shrinkage.)
 
-        Note: Normals are discarded.  Call recompute_normals() if you need them.
-        
+        Normals are automatically recomputed, and 'degenerate' faces after smoothing are discarded.
+
         Args:
             iterations:
                 How many passes to take over the data.
                 More iterations results in a smoother mesh, but more shrinkage (and more CPU time).
-            
-            recompute_normals:
-                The previous normals are discarded.
-                If recompute_normals=True, they will be recomputed after smoothing.
         
         TODO: Variations of this technique can give refined results.
             - Try weighting the influence of each neighbor by it's distance to the center vertex.
@@ -546,6 +539,19 @@ class Mesh:
             # Swap (save RAM allocation overhead by reusing the new_vertices_zyx array between iterations)
             self.vertices_zyx, new_vertices_zyx = new_vertices_zyx, self.vertices_zyx
 
+        # Smoothing can cause degenerate faces,
+        # particularly in some small special cases like this:
+        #
+        #   1        1
+        #  / \       |
+        # 2---3 ==>  X (where X is occupied by both 2 and 3)
+        #  \ /       |
+        #   4        4
+        #
+        # Detecting and removing such degenerate faces is easy if we recompute the normals.
+        # (If we don't remove them, draco chokes on them.)
+        self.recompute_normals(True)
+        assert self.normals_zyx.shape == self.vertices_zyx.shape
 
     def serialize(self, path=None, fmt=None):
         """
