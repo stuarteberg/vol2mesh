@@ -242,6 +242,12 @@ class Mesh:
             mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True)
         return mesh
 
+    def drop_normals(self):
+        """
+        Drop normals from the mesh.
+        """
+        self.normals_zyx = np.zeros((0,3), np.float32)
+
     def compress(self):
         if self._draco_bytes is None and len(self._vertices_zyx) > 0:
             assert self._vertices_zyx.shape == self._normals_zyx.shape or self._normals_zyx.shape == (0,3), \
@@ -331,7 +337,7 @@ class Mesh:
         by replacing them with the index of the first matching vertex in the list.
         Works in-place.
         
-        Note: Normals are discarded.  Call recompute_normals() if you need them.
+        Note: Normals are recomputed iff they were present originally.
         
         Args:
             drop_duplicate_vertices:
@@ -341,19 +347,24 @@ class Mesh:
             drop_duplicate_faces:
                 If True, remove faces with an identical
                 vertex list to any previous face.
-            
-            recompute_normals:
-                Normals are discarded during the stitching procedure.
-                To recompute them afterwards, set recompute_normals=True.
+        
+        Returns:
+            False if no stitching was performed (none was needed),
+            or True otherwise.
+        
         """
+        need_normals = (self.normals_zyx.shape[0] > 0)
+
         mapping_pairs = remap_duplicates(self.vertices_zyx)
         
         dup_indices, orig_indices = mapping_pairs.transpose()
         if len(dup_indices) == 0:
-            return
+            if need_normals:
+                self.recompute_normals(True)
+            return False # No stitching was needed.
 
         # Discard old normals
-        self.normals_zyx = np.zeros((0,3), np.float32)
+        self.drop_normals()
 
         # Remap faces to no longer refer to the duplicates
         mapper = LabelMapper(dup_indices, orig_indices)
@@ -400,6 +411,10 @@ class Mesh:
         if drop_duplicate_faces:
             _drop_duplicate_faces()
 
+        if need_normals:
+            self.recompute_normals(True)
+
+        return True # stitching was needed.
 
     def recompute_normals(self, remove_degenerate_faces=True):
         """
@@ -432,19 +447,13 @@ class Mesh:
     def simplify(self, fraction):
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
-        
-        Note: Normals are discarded.  Call recompute_normals() if you need them.
         """
-        self.faces #HACK!! I need to make sure this is unpickled BEFORE setting the normals.
-        
-        # Normals are about to get discarded and recomputed anyway,
-        # so delete them now to save some RAM and serialization time.
-        self.normals_zyx = np.zeros((0,3), dtype=np.float32)
-        
         # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).
         # We have to check for this in advance because we can't gracefully handle the error.
         # https://github.com/neurolabusc/Fast-Quadric-Mesh-Simplification-Pascal-/blob/master/c_code/Main.cpp
         if fraction is None or fraction == 1.0 or (len(self.faces) * fraction <= 4):
+            if self.normals_zyx.shape[0] == 0:
+                self.recompute_normals(True)
             return self
 
         obj_bytes = write_obj(self.vertices_zyx, self.faces)
@@ -500,6 +509,8 @@ class Mesh:
             - Try "Cotangent Laplacian Smoothing"
         """
         if iterations == 0:
+            if self.normals_zyx.shape[0] == 0:
+                self.recompute_normals(True)
             return
         
         # Always discard old normals
@@ -607,6 +618,10 @@ def concatenate_meshes(meshes):
     Combine the given list of Mesh objects into a single Mesh object,
     renumbering the face vertices as needed, and expanding the bounding box
     to encompass the union of the meshes.
+    
+    If no meshes had normals, the result has no normals.
+    If all meshes had normals, the result preserves them.
+    It is an error to provide a mix of meshes that do and do not contain normals.
     """
     if not isinstance(meshes, list):
         meshes = list(meshes)

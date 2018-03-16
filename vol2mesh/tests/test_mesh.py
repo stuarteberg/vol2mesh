@@ -1,3 +1,4 @@
+import copy
 from itertools import starmap
 import unittest
 import pickle
@@ -316,6 +317,82 @@ class TestMesh(unittest.TestCase):
         
         assert len(unpickled.vertices_zyx) == 0
         assert len(unpickled.faces) == 0
+
+    def test_normals_guarantees(self):
+        """
+        Member functions have guarantees about whether normals are present or absent after the function runs.
+        - simplify(): Always present afterwards
+        - laplacian_smooth(): Always present afterwards
+        - stitch_adjacent_faces(): Present afterwards IFF they were present before.
+        """
+        data_box = np.array(self.data_box)
+        
+        FACTOR = 2
+        data_box *= FACTOR
+        
+        mesh_orig = Mesh.from_binary_vol( self.binary_vol, data_box )
+        
+        mesh = copy.deepcopy(mesh_orig)
+        assert mesh.normals_zyx.shape[0] > 1
+        
+        # Verify normals are always present after simplification,
+        # Regardless of whether or not they were present before,
+        # or if simplification was even performed.
+        mesh.simplify(1.0)
+        assert mesh.normals_zyx.shape[0] > 1
+
+        mesh.simplify(0.5)
+        assert mesh.normals_zyx.shape[0] > 1
+
+        mesh.drop_normals()
+        mesh.simplify(0.5)
+        assert mesh.normals_zyx.shape[0] > 1
+
+        # Verify normals are always present after smoothing,
+        # Regardless of whether or not they were present before,
+        # or if smoothing was even performed.
+        mesh = copy.deepcopy(mesh_orig)
+        mesh.laplacian_smooth(0)
+        assert mesh.normals_zyx.shape[0] > 1
+
+        mesh.laplacian_smooth(2)
+        assert mesh.normals_zyx.shape[0] > 1
+
+        mesh.drop_normals()
+        mesh.laplacian_smooth(2)
+        assert mesh.normals_zyx.shape[0] > 1
+
+        # Verify that the presence or absence of normals is the SAME after stitching,
+        # Whether or not stitching had any effect.
+        
+        # no stitching, keep normals
+        mesh = copy.deepcopy(mesh_orig)
+        stitching_performed = mesh.stitch_adjacent_faces()
+        assert not stitching_performed
+        assert mesh.normals_zyx.shape[0] > 1
+        
+        # no stitching, no normals in the first place
+        mesh.drop_normals()
+        stitching_performed = mesh.stitch_adjacent_faces()
+        assert not stitching_performed
+        assert mesh.normals_zyx.shape[0] == 0
+
+        # stitching, generate normals
+        mesh = copy.deepcopy(mesh_orig)
+        duplicated_mesh = concatenate_meshes([mesh, mesh])
+        assert duplicated_mesh.normals_zyx.shape[0] > 1
+        stitching_performed = duplicated_mesh.stitch_adjacent_faces()
+        assert stitching_performed
+        assert duplicated_mesh.normals_zyx.shape[0] > 1
+        
+        # stitching, no normals in the first place
+        mesh = copy.deepcopy(mesh_orig)
+        duplicated_mesh = concatenate_meshes([mesh, mesh])
+        duplicated_mesh.drop_normals()
+        stitching_performed = duplicated_mesh.stitch_adjacent_faces()
+        assert stitching_performed
+        assert duplicated_mesh.normals_zyx.shape[0] == 0
+
 
 class TestConcatenate(unittest.TestCase):
 
