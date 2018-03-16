@@ -182,12 +182,23 @@ class TestMesh(unittest.TestCase):
         What happens when we call functions on an empty mesh?
         """
         mesh = Mesh( np.zeros((0,3), np.float32), np.zeros((0,3), int) )
+        mesh.simplify(1.0)
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
         mesh.simplify(0.1)
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+        mesh.laplacian_smooth(0)
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
         mesh.laplacian_smooth(2)
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+        mesh.stitch_adjacent_faces()
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
         mesh.serialize(fmt='obj')
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
         mesh.serialize(fmt='drc')
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
         mesh.compress()
         concatenate_meshes((mesh, mesh))
+        assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
 
 
     def test_smoothing_trivial(self):
