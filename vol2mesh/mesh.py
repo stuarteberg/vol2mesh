@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from skimage.measure import marching_cubes_lewiner
 
+import lz4
+
 from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, decode_drc_bytes_to_faces
 
 from .normals import compute_face_normals, compute_vertex_normals
@@ -23,7 +25,7 @@ class Mesh:
     """
     A class to hold the elements of a mesh.
     """
-    def __init__(self, vertices_zyx, faces, normals_zyx=None, box=None, pickle_with_draco=True):
+    def __init__(self, vertices_zyx, faces, normals_zyx=None, box=None, pickle_compression_method='lz4'):
         """
         Args:
             vertices_zyx: ndarray (N,3), float
@@ -38,10 +40,12 @@ class Mesh:
                 (The bounding box information is not stored in mesh files like .obj and .drc,
                 but it is useful to store it here for programmatic manipulation.)
             
-            pickle_with_draco:
-                If True, pickling will be performed by encoding the vertices, normals, and faces via draco compression.
+            pickle_compression_method:
+                How (or whether) to compress vertices, normals, and faces during pickling.
+                Choices are: 'draco', 'lz4', or None.
         """
-        self.pickle_with_draco = pickle_with_draco
+        assert pickle_compression_method in (None, 'lz4', 'draco')
+        self.pickle_compression_method = pickle_compression_method
         self._destroyed = False
         
         # Note: When restoring from pickled data, vertices and faces
@@ -50,6 +54,7 @@ class Mesh:
         self._vertices_zyx = np.asarray(vertices_zyx, dtype=np.float32)
         self._faces = np.asarray(faces, dtype=np.uint32)
         self._draco_bytes = None
+        self._lz4_items = None
 
         if normals_zyx is None:
             self._normals_zyx = np.zeros((0,3), dtype=np.int32)
@@ -248,36 +253,91 @@ class Mesh:
         """
         self.normals_zyx = np.zeros((0,3), np.float32)
 
-    def compress(self):
-        if self._draco_bytes is None and len(self._vertices_zyx) > 0:
-            assert self._vertices_zyx.shape == self._normals_zyx.shape or self._normals_zyx.shape == (0,3), \
-                f"{self._vertices_zyx.shape} != {self._normals_zyx.shape}"
-            self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._normals_zyx[:,::-1], self._faces)
-            self._vertices_zyx = None
-            self._normals_zyx = None
-            self._faces = None
-        
-        if self._draco_bytes is None:
-            return 0
-        return len(self._draco_bytes)
-        
-    def __getstate__(self):
+    def compress(self, method='lz4'):
         """
-        Pickle representation.
-        If self.pickle_with_draco is True, compress the mesh to a buffer with draco
-        (vertices and faces only, for now), and discard the original arrays.
+        Compress the array members of this mesh, and return the (approximate) compressed size.
+        
+        Method 'lz4' preserves data without loss.
+        Method 'draco' is lossy.
+        Method None will not compress at all.
         """
-        if self.pickle_with_draco:
-            self.compress()
-        return self.__dict__
+        if method is None:
+            return self.vertices_zyx.nbytes + self.faces.nbytes + self.normals_zyx.nbytes
+        elif method == 'draco':
+            return self._compress_as_draco()
+        elif method == 'lz4':
+            return self._compress_as_lz4()
+        else:
+            raise RuntimeError(f"Unknown compression method: {method}")
+    
+    def _compress_as_draco(self):
+        if self._draco_bytes is not None:
+            # Already compressed as draco
+            return len(self._draco_bytes)
 
-    def _decode_from_pickled_draco(self):
+        self._draco_bytes = encode_faces_to_drc_bytes(self.vertices_zyx[:,::-1], self.normals_zyx[:,::-1], self._faces)
+        self._vertices_zyx = None
+        self._normals_zyx = None
+        self._faces = None
+        return len(self._draco_bytes)
+    
+    def _compress_as_lz4(self):
+        if self._lz4_items is not None:
+            # Already compressed as lz4
+            return sum(map(len, self._lz4_items))
+    
+        flat_vertices = self.vertices_zyx.reshape(-1)
+        flat_normals = self.normals_zyx.reshape(-1)
+        flat_faces = self.faces.reshape(-1)
+
+        self._lz4_items = []
+        self._lz4_items.append( lz4.compress(flat_vertices) )
+        self._lz4_items.append( lz4.compress(flat_normals) )
+        self._lz4_items.append( lz4.compress(flat_faces) )
+        
+        self._vertices_zyx = None
+        self._normals_zyx = None
+        self._faces = None
+        
+        return sum(map(len, self._lz4_items))
+    
+    def _uncompress(self):
+        if self._draco_bytes is not None:
+            self._uncompress_from_draco()
+        elif self._lz4_items is not None:
+            self._uncompress_from_lz4()
+        
+        assert self._vertices_zyx is not None
+        assert self._normals_zyx is not None
+        assert self._faces is not None
+    
+    def _uncompress_from_draco(self):
         vertices_xyz, normals_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
-        assert vertices_xyz.shape == normals_xyz.shape or normals_xyz.shape == (0,3), \
-            f"{vertices_xyz.shape} != {normals_xyz.shape}"
         self._vertices_zyx = vertices_xyz[:, ::-1]
         self._normals_zyx = normals_xyz[:, ::-1]
         self._draco_bytes = None
+    
+    def _uncompress_from_lz4(self):
+        vertices_buf, normals_buf, faces_buf = map(lz4.uncompress, self._lz4_items)
+        self._vertices_zyx = np.frombuffer(vertices_buf, np.float32).reshape((-1,3))
+        self._normals_zyx = np.frombuffer(normals_buf, np.float32).reshape((-1,3))
+        self._faces = np.frombuffer(faces_buf, np.uint32).reshape((-1,3))
+
+        self._vertices_zyx.flags['WRITEABLE'] = True
+        self._normals_zyx.flags['WRITEABLE'] = True
+        self._faces.flags['WRITEABLE'] = True
+        
+        self._lz4_items = None
+
+    def __getstate__(self):
+        """
+        Pickle representation.
+        If pickle compression is enabled, compress the mesh to a buffer with draco,
+        (or compress individual arrays with lz4) and discard the original arrays.
+        """
+        if self.pickle_compression_method:
+            self.compress(self.pickle_compression_method)
+        return self.__dict__
 
     def destroy(self):
         """
@@ -292,42 +352,46 @@ class Mesh:
         self._normals_zyx = None
         self._destroyed = True
 
-    def auto_unpickle(f):
+    def auto_uncompress(f):
+        """
+        Decorator.
+        Before executing the decorated function, ensure that this mesh is not in a compressed state.
+        """
         @functools.wraps(f)
         def wrapper(self, *args, **kwargs):
             assert not self._destroyed
             if self._vertices_zyx is None:
-                self._decode_from_pickled_draco()
+                self._uncompress()
             return f(self, *args, **kwargs)
         return wrapper
 
     @property
-    @auto_unpickle
+    @auto_uncompress
     def vertices_zyx(self):
         return self._vertices_zyx
 
     @vertices_zyx.setter
-    @auto_unpickle
+    @auto_uncompress
     def vertices_zyx(self, new_vertices_zyx):
         self._vertices_zyx = new_vertices_zyx
 
     @property
-    @auto_unpickle
+    @auto_uncompress
     def faces(self):
         return self._faces
 
     @faces.setter
-    @auto_unpickle
+    @auto_uncompress
     def faces(self, new_faces):
         self._faces = new_faces
 
     @property
-    @auto_unpickle
+    @auto_uncompress
     def normals_zyx(self):
         return self._normals_zyx
     
     @normals_zyx.setter
-    @auto_unpickle
+    @auto_uncompress
     def normals_zyx(self, new_normals_zyx):
         self._normals_zyx = new_normals_zyx
     

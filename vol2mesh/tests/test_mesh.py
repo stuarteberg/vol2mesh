@@ -404,6 +404,25 @@ class TestMesh(unittest.TestCase):
         assert stitching_performed
         assert duplicated_mesh.normals_zyx.shape[0] == 0
 
+    def test_compress(self):
+        mesh_orig = Mesh.from_binary_vol( self.binary_vol, self.data_box )
+        uncompressed_size = mesh_orig.normals_zyx.nbytes + mesh_orig.vertices_zyx.nbytes + mesh_orig.faces.nbytes
+        mesh = copy.deepcopy(mesh_orig)
+        
+        size = mesh.compress('lz4')
+        assert size < uncompressed_size
+        assert (mesh.faces == mesh_orig.faces).all()
+        assert (mesh.vertices_zyx == mesh_orig.vertices_zyx).all()
+        assert (mesh.normals_zyx == mesh_orig.normals_zyx).all()
+
+        # Draco is lossy, so we can't compare exactly.
+        # Just make sure the arrays are at least of the correct shape.
+        size = mesh.compress('draco')
+        assert size < uncompressed_size
+        assert (mesh.faces.shape == mesh_orig.faces.shape)
+        assert (mesh.vertices_zyx.shape == mesh_orig.vertices_zyx.shape)
+        assert (mesh.normals_zyx.shape == mesh_orig.normals_zyx.shape)
+        
 
 class TestConcatenate(unittest.TestCase):
 
