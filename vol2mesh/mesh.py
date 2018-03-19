@@ -270,37 +270,40 @@ class Mesh:
         else:
             raise RuntimeError(f"Unknown compression method: {method}")
     
-    def _compress_as_draco(self):
-        if self._draco_bytes is not None:
-            # Already compressed as draco
-            return len(self._draco_bytes)
 
-        self._draco_bytes = encode_faces_to_drc_bytes(self.vertices_zyx[:,::-1], self.normals_zyx[:,::-1], self._faces)
-        self._vertices_zyx = None
-        self._normals_zyx = None
-        self._faces = None
+    def _compress_as_draco(self):
+        if self._draco_bytes is None:
+            self._uncompress() # Ensure not currently compressed as lz4
+            self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._normals_zyx[:,::-1], self._faces)
+            self._vertices_zyx = None
+            self._normals_zyx = None
+            self._faces = None
         return len(self._draco_bytes)
     
-    def _compress_as_lz4(self):
-        if self._lz4_items is not None:
-            # Already compressed as lz4
-            return sum(map(len, self._lz4_items))
-    
-        flat_vertices = self.vertices_zyx.reshape(-1)
-        flat_normals = self.normals_zyx.reshape(-1)
-        flat_faces = self.faces.reshape(-1)
 
-        self._lz4_items = []
-        self._lz4_items.append( lz4.compress(flat_vertices) )
-        self._lz4_items.append( lz4.compress(flat_normals) )
-        self._lz4_items.append( lz4.compress(flat_faces) )
-        
-        self._vertices_zyx = None
-        self._normals_zyx = None
-        self._faces = None
+    def _compress_as_lz4(self):
+        if self._lz4_items is None:
+            self._uncompress() # Ensure not currently compressed as draco
+            compressed = []
+            
+            flat_vertices = self._vertices_zyx.reshape(-1)
+            compressed.append( lz4.compress(flat_vertices) )
+            self._vertices_zyx = None
+            
+            flat_normals = self._normals_zyx.reshape(-1)
+            compressed.append( lz4.compress(flat_normals) )
+            self._normals_zyx = None
+    
+            flat_faces = self._faces.reshape(-1)
+            compressed.append( lz4.compress(flat_faces) )
+            self._faces = None
+
+            # Compress twice: still fast, even smaller
+            self._lz4_items = list(map(lz4.compress, compressed))
         
         return sum(map(len, self._lz4_items))
     
+
     def _uncompress(self):
         if self._draco_bytes is not None:
             self._uncompress_from_draco()
@@ -311,23 +314,36 @@ class Mesh:
         assert self._normals_zyx is not None
         assert self._faces is not None
     
+
     def _uncompress_from_draco(self):
         vertices_xyz, normals_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
         self._vertices_zyx = vertices_xyz[:, ::-1]
         self._normals_zyx = normals_xyz[:, ::-1]
         self._draco_bytes = None
     
+
     def _uncompress_from_lz4(self):
-        vertices_buf, normals_buf, faces_buf = map(lz4.uncompress, self._lz4_items)
+        # Note: data was compressed twice, so uncompress twice
+        uncompressed = list(map(lz4.uncompress, self._lz4_items))
+        self._lz4_items = None
+
+        uncompressed = list(map(lz4.uncompress, uncompressed))
+        vertices_buf, normals_buf, faces_buf = uncompressed
+        del uncompressed
+        
         self._vertices_zyx = np.frombuffer(vertices_buf, np.float32).reshape((-1,3))
+        del vertices_buf
+        
         self._normals_zyx = np.frombuffer(normals_buf, np.float32).reshape((-1,3))
+        del normals_buf
+
         self._faces = np.frombuffer(faces_buf, np.uint32).reshape((-1,3))
+        del faces_buf
 
         self._vertices_zyx.flags['WRITEABLE'] = True
         self._normals_zyx.flags['WRITEABLE'] = True
         self._faces.flags['WRITEABLE'] = True
-        
-        self._lz4_items = None
+
 
     def __getstate__(self):
         """
