@@ -15,7 +15,7 @@ from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, 
 
 from .normals import compute_face_normals, compute_vertex_normals
 from .obj_utils import write_obj, read_obj
-from .io_utils import TemporaryNamedPipe
+from .io_utils import TemporaryNamedPipe, AutoDeleteDir
 
 logger = logging.getLogger(__name__)
 
@@ -247,11 +247,13 @@ class Mesh:
             mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True)
         return mesh
 
+
     def drop_normals(self):
         """
         Drop normals from the mesh.
         """
         self.normals_zyx = np.zeros((0,3), np.float32)
+
 
     def compress(self, method='lz4'):
         """
@@ -524,9 +526,11 @@ class Mesh:
             self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces, face_normals=face_normals)
         
 
-    def simplify(self, fraction):
+    def simplify(self, fraction, in_memory=False, timeout=None):
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
+        
+        Note: timeout only applies to the NON-in-memory case.
         """
         # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).
         # We have to check for this in advance because we can't gracefully handle the error.
@@ -536,28 +540,38 @@ class Mesh:
                 self.recompute_normals(True)
             return self
 
-        obj_bytes = write_obj(self.vertices_zyx, self.faces)
-        bytes_stream = BytesIO(obj_bytes)
-
-        simplify_input_pipe = TemporaryNamedPipe('input.obj')
-        simplify_input_pipe.start_writing_stream(bytes_stream)
+        if in_memory:
+            obj_bytes = write_obj(self.vertices_zyx, self.faces)
+            bytes_stream = BytesIO(obj_bytes)
     
-        simplify_output_pipe = TemporaryNamedPipe('output.obj')
-    
-        cmd = f'fq-mesh-simplify {simplify_input_pipe.path} {simplify_output_pipe.path} {fraction}'
-        proc = subprocess.Popen(cmd, shell=True)
-        mesh_stream = simplify_output_pipe.open_stream('rb')
+            simplify_input_pipe = TemporaryNamedPipe('input.obj')
+            simplify_input_pipe.start_writing_stream(bytes_stream)
         
-        # The fq-mesh-simplify tool does not compute normals.
-        self.vertices_zyx, self.faces, _empty_normals = read_obj(mesh_stream)
-        mesh_stream.close()
-
-        proc.wait(timeout=1.0)
-        if proc.returncode != 0:
-            msg = f"Child process returned an error code: {proc.returncode}.\n"\
-                  f"Command was: {cmd}"
-            logger.error(msg)
-            raise RuntimeError(msg)
+            simplify_output_pipe = TemporaryNamedPipe('output.obj')
+        
+            cmd = f'fq-mesh-simplify {simplify_input_pipe.path} {simplify_output_pipe.path} {fraction}'
+            proc = subprocess.Popen(cmd, shell=True)
+            mesh_stream = simplify_output_pipe.open_stream('rb')
+            
+            # The fq-mesh-simplify tool does not compute normals.
+            self.vertices_zyx, self.faces, _empty_normals = read_obj(mesh_stream)
+            mesh_stream.close()
+    
+            proc.wait(timeout=1.0)
+            if proc.returncode != 0:
+                msg = f"Child process returned an error code: {proc.returncode}.\n"\
+                      f"Command was: {cmd}"
+                logger.error(msg)
+                raise RuntimeError(msg)
+        else:
+            obj_dir = AutoDeleteDir()
+            undecimated_path = f'{obj_dir}/undecimated.obj'
+            decimated_path = f'{obj_dir}/decimated.obj'
+            write_obj(self.vertices_zyx, self.faces, output_file=undecimated_path)
+            cmd = f'fq-mesh-simplify {undecimated_path} {decimated_path} {fraction}'
+            subprocess.check_call(cmd, shell=True, timeout=timeout)
+            with open(decimated_path, 'rb') as decimated_stream:
+                self.vertices_zyx, self.faces, _empty_normals = read_obj(decimated_stream)
 
         # Force normal reomputation to eliminate possible degenerate faces
         # (Can decimation produce degenerate faces?)
