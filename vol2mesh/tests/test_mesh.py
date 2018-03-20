@@ -298,8 +298,10 @@ class TestMesh(unittest.TestCase):
         remapped_faces = remapped_faces[:-1, :]
         
         reduced_vertices = list(vertices)
-        del reduced_vertices[6]
-        del reduced_vertices[3]
+        del reduced_vertices[9] # wasn't referenced to begin with
+        del reduced_vertices[6] # was duplicated
+        del reduced_vertices[3] # was duplicated
+        reduced_vertices = np.asarray(reduced_vertices)
         
         mesh = Mesh(vertices, faces)
         mesh.stitch_adjacent_faces()

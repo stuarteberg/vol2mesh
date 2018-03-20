@@ -244,7 +244,7 @@ class Mesh:
 
         mesh = concatenate_meshes(meshes)
         if stitch:
-            mesh.stitch_adjacent_faces(drop_duplicate_vertices=True, drop_duplicate_faces=True)
+            mesh.stitch_adjacent_faces(drop_unused_vertices=True, drop_duplicate_faces=True)
         return mesh
 
 
@@ -413,7 +413,7 @@ class Mesh:
     def normals_zyx(self, new_normals_zyx):
         self._normals_zyx = new_normals_zyx
     
-    def stitch_adjacent_faces(self, drop_duplicate_vertices=True, drop_duplicate_faces=True):
+    def stitch_adjacent_faces(self, drop_unused_vertices=True, drop_duplicate_faces=True):
         """
         Search for duplicate vertices and remove all references to them in self.faces,
         by replacing them with the index of the first matching vertex in the list.
@@ -422,8 +422,8 @@ class Mesh:
         Note: Normals are recomputed iff they were present originally.
         
         Args:
-            drop_duplicate_vertices:
-                If True, drop the duplicate vertices from self.vertices_zyx
+            drop_unused_vertices:
+                If True, drop the unused (duplicate) vertices from self.vertices_zyx
                 (since no faces refer to them any more, this saves some RAM).
             
             drop_duplicate_faces:
@@ -460,24 +460,8 @@ class Mesh:
         # Also, we may have uncovered duplicate faces now that the
         # vertexes have been canonicalized.
 
-        def _drop_duplicate_vertices():
-            # Calculate shift:
-            # Determine number of duplicates above each vertex in the list
-            drop_mask = np.zeros((self.vertices_zyx.shape[0]), bool)
-            drop_mask[(dup_indices, )] = True
-            cumulative_dupes = np.zeros(drop_mask.shape[0]+1, np.uint32)
-            np.add.accumulate(drop_mask, out=cumulative_dupes[1:])
-    
-            # Renumber the faces
-            orig = np.arange(len(self.vertices_zyx), dtype=np.uint32)
-            shiftmap = orig - cumulative_dupes[:-1]
-            self.faces = shiftmap[self.faces]
-
-            # Delete the duplicate vertexes, which are unused now
-            self.vertices_zyx = np.delete(self.vertices_zyx, dup_indices, axis=0)
-
-        if drop_duplicate_vertices:
-            _drop_duplicate_vertices()
+        if drop_unused_vertices:
+            self.drop_unused_vertices()
 
         def _drop_duplicate_faces():
             # Normalize face vertex order before checking for duplicates.
@@ -497,6 +481,33 @@ class Mesh:
             self.recompute_normals(True)
 
         return True # stitching was needed.
+
+    def drop_unused_vertices(self):
+        """
+        Drop all unused vertices (and corresponding normals) from the mesh,
+        defined as vertex indices that are not referenced by any faces.
+        """
+        _used_vertices = pd.Series(self.faces.flat).unique()
+        all_vertices = pd.DataFrame(np.arange(len(self.vertices_zyx), dtype=int), columns=['vertex_index'])
+        unused_vertices = all_vertices.query('vertex_index not in @_used_vertices')['vertex_index'].values
+
+        # Calculate shift:
+        # Determine number of duplicates above each vertex in the list
+        drop_mask = np.zeros((self.vertices_zyx.shape[0]), bool)
+        drop_mask[(unused_vertices,)] = True
+        cumulative_dupes = np.zeros(drop_mask.shape[0]+1, np.uint32)
+        np.add.accumulate(drop_mask, out=cumulative_dupes[1:])
+
+        # Renumber the faces
+        orig = np.arange(len(self.vertices_zyx), dtype=np.uint32)
+        shiftmap = orig - cumulative_dupes[:-1]
+        self.faces = shiftmap[self.faces]
+
+        # Delete the unused vertexes
+        self.vertices_zyx = np.delete(self.vertices_zyx, unused_vertices, axis=0)
+        if len(self.normals_zyx) > 0:
+            self.normals_zyx = np.delete(self.normals_zyx, unused_vertices, axis=0)
+
 
     def recompute_normals(self, remove_degenerate_faces=True):
         """
