@@ -527,6 +527,7 @@ class Mesh:
             good_faces = face_normals.any(axis=1)
             if not good_faces.all():
                 self.faces = self.faces[good_faces, :]
+                face_normals = face_normals[good_faces, :]
             del good_faces
 
         if len(self.faces) == 0:
