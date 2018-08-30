@@ -1,6 +1,7 @@
 import os
 import glob
 import logging
+import tarfile
 import functools
 import subprocess
 from io import BytesIO
@@ -97,7 +98,7 @@ class Mesh:
         elif ext == '.obj':
             with open(path, 'rb') as obj_stream:
                 vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
-                return Mesh(vertices_zyx, faces, normals_zyx)
+            return Mesh(vertices_zyx, faces, normals_zyx)
         else:
             msg = f"Unknown file type: {path}"
             logger.error(msg)
@@ -115,6 +116,30 @@ class Mesh:
         meshes = map(Mesh.from_file, mesh_paths)
         return concatenate_meshes(meshes)
 
+
+    @classmethod
+    def from_tarfile(cls, path_or_bytes):
+        """
+        Alternate constructor.
+        Read all mesh files (either .drc or .obj) from a .tar file
+        and concatenate them into one big mesh.
+        Note: The tar file structure should be completely flat,
+        i.e. no internal directory.
+        """
+        if isinstance(path_or_bytes, str):
+            tf = tarfile.open(path_or_bytes)
+        else:
+            tf = tarfile.TarFile(fileobj=BytesIO(path_or_bytes))
+        
+        meshes = []
+        for name in tf.getnames():
+            ext = name[-4:]
+            if ext in ('.drc', '.obj'):
+                buf = tf.extractfile(name).read()
+                mesh = Mesh.from_buffer(buf, ext[1:])
+                meshes.append(mesh)
+
+        return concatenate_meshes(meshes)
 
     @classmethod
     def from_buffer(cls, serialized_bytes, fmt):
@@ -135,7 +160,7 @@ class Mesh:
         if fmt == 'obj':
             with BytesIO(serialized_bytes) as obj_stream:
                 vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
-                return Mesh(vertices_zyx, faces, normals_zyx)
+            return Mesh(vertices_zyx, faces, normals_zyx)
         elif fmt == 'drc':
             vertices_xyz, normals_xyz, faces = decode_drc_bytes_to_faces(serialized_bytes)
             vertices_zyx = vertices_xyz[:,::-1]
@@ -370,7 +395,7 @@ class Mesh:
         self._normals_zyx = None
         self._destroyed = True
 
-    def auto_uncompress(f):
+    def auto_uncompress(f): # @NoSelf
         """
         Decorator.
         Before executing the decorated function, ensure that this mesh is not in a compressed state.
