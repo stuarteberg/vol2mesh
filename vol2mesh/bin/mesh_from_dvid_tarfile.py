@@ -11,6 +11,9 @@ Examples:
     
     # One body, decimated
     mesh_from_dvid_tarfile -s 0.5 -o '{body}-simplified.drc' emdata3:8900 0716 segmentation_sv_meshes 1668443473
+
+    # One body, exclude normals from output
+    mesh_from_dvid_tarfile --drop-normals emdata3:8900 0716 segmentation_sv_meshes 1668443473    
 """
 import logging
 import argparse
@@ -29,17 +32,19 @@ def main():
                         help='Output path.  If processing multiple bodies, use {body} in the name. Default: "{body}.obj"')
     parser.add_argument('--simplify', '-s', type=float, default=1.0,
                         help='Optional decimation to apply before serialization, between 0.01 (most aggressive) and 1.0 (no decimation, the default).')
+    parser.add_argument('--drop-normals', action='store_true',
+                        help='Drop the normals from the mesh before serializing it.')
     parser.add_argument('server')
     parser.add_argument('uuid')
     parser.add_argument('tarsupervoxels_instance')
     parser.add_argument('body', nargs='+')
     args = parser.parse_args()
 
-    mesh_from_dvid_tarfile(args.server, args.uuid, args.tarsupervoxels_instance, args.body, args.simplify, args.output_path)
+    mesh_from_dvid_tarfile(args.server, args.uuid, args.tarsupervoxels_instance, args.body, args.simplify, args.drop_normals, args.output_path)
     logger.info("DONE")
 
 
-def mesh_from_dvid_tarfile(server, uuid, tsv_instance, bodies, simplify=1.0, output_path='{body}.obj'):
+def mesh_from_dvid_tarfile(server, uuid, tsv_instance, bodies, simplify=1.0, drop_normals=False, output_path='{body}.obj'):
     from neuclease.dvid import fetch_tarfile
 
     for body in bodies:
@@ -52,6 +57,9 @@ def mesh_from_dvid_tarfile(server, uuid, tsv_instance, bodies, simplify=1.0, out
         if simplify != 1.0:
             logger.info(f"Body {body}: Simplifying")
             mesh.simplify(simplify, in_memory=True)
+
+        if drop_normals:
+            mesh.drop_normals() 
 
         p = output_path.format(body=body)
         logger.info(f"Body {body}: Serializing to {p}")
