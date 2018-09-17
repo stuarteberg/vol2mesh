@@ -14,6 +14,7 @@ source:
 
 build:
   number: 0
+  string: {{PKG_BUILDNUM}}_py{{CONDA_PY}}_g{{GIT_FULL_HASH[:7]}}
   script: python setup.py install --single-version-externally-managed --record record.txt
   noarch: python
   
