@@ -9,11 +9,8 @@ setup( name='vol2mesh',
        package_data={},
        entry_points={
           'console_scripts': [
-              'slices2mesh = vol2mesh.slices2mesh:main',
-              'slices2mesh1 = vol2mesh.slices2mesh1:main',
-              'slices2mesh2 = vol2mesh.slices2mesh2:main',
-              'vol2mesh = vol2mesh.vol2mesh:main',
-              'vol2mesh4DVID = vol2mesh.vol2mesh4DVID:main'
+              'mesh_from_dvid_tarfile = vol2mesh.bin.mesh_from_dvid_tarfile:main',
+              'sv_to_mesh = vol2mesh.bin.sv_to_mesh:main'
           ]
        }
      )

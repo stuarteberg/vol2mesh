@@ -13,7 +13,7 @@ Requirements:
 
 Example Usage:
     
-    python sv_to_mesh.py -m 10e6 -s=3 -d=0.2 -o mesh-1224133018.obj emdata3:8900 7254 segmentation 1224133018
+    sv_to_mesh -m 10e6 -s=3 -d=0.2 -o mesh-1224133018.obj emdata3:8900 7254 segmentation 1224133018
 """
 import os
 import sys
