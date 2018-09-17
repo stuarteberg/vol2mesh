@@ -78,6 +78,10 @@ class TestMesh(unittest.TestCase):
         serialized = mesh.serialize(fmt='drc')
         unserialized = mesh.from_buffer(serialized, 'drc')
         assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
+
+        serialized = mesh.serialize(fmt='ngmesh')
+        unserialized = mesh.from_buffer(serialized, 'ngmesh')
+        assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
         
 
     def test_blockwise(self):
@@ -148,10 +152,10 @@ class TestMesh(unittest.TestCase):
         boxes[:,0,:] = starts
         boxes[:,1,:] = starts + (3,4,4)
 
-        mesh = Mesh.from_binary_blocks(blocks[3:4], boxes[3:4], stitch=False)
-        #mesh.serialize('/tmp/simple-blocks.obj')
+        _mesh = Mesh.from_binary_blocks(blocks[3:4], boxes[3:4], stitch=False)
+        #_mesh.serialize('/tmp/simple-blocks.obj')
         
-        #print(np.asarray(sorted(mesh.vertices_zyx.tolist())))
+        #print(np.asarray(sorted(_mesh.vertices_zyx.tolist())))
         
 
     def test_tiny_array(self):

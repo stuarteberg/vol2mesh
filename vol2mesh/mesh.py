@@ -16,6 +16,7 @@ from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, 
 
 from .normals import compute_face_normals, compute_vertex_normals
 from .obj_utils import write_obj, read_obj
+from .ngmesh import read_ngmesh, write_ngmesh
 from .io_utils import TemporaryNamedPipe, AutoDeleteDir
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,10 @@ class Mesh:
             with open(path, 'rb') as obj_stream:
                 vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
             return Mesh(vertices_zyx, faces, normals_zyx)
+        elif ext == '.ngmesh':
+            with open(path, 'rb') as ngmesh_stream:
+                vertices_xyz, faces = read_ngmesh(ngmesh_stream)
+            return Mesh(vertices_xyz[:,::-1], faces)
         else:
             msg = f"Unknown file type: {path}"
             logger.error(msg)
@@ -134,7 +139,7 @@ class Mesh:
         meshes = []
         for name in tf.getnames():
             ext = name[-4:]
-            if ext in ('.drc', '.obj'):
+            if ext in ('.drc', '.obj', '.ngmesh'):
                 buf = tf.extractfile(name).read()
                 mesh = Mesh.from_buffer(buf, ext[1:])
                 meshes.append(mesh)
@@ -153,7 +158,7 @@ class Mesh:
             fmt:
                 Either 'obj' or 'drc'.
         """
-        assert fmt in ('obj', 'drc')
+        assert fmt in ('obj', 'drc', 'ngmesh')
         if len(serialized_bytes) == 0:
             return Mesh(np.zeros((0,3), np.float32), np.zeros((0,3), np.uint32))
 
@@ -166,6 +171,10 @@ class Mesh:
             vertices_zyx = vertices_xyz[:,::-1]
             normals_zyx = normals_xyz[:,::-1]
             return Mesh(vertices_zyx, faces, normals_zyx)
+        elif fmt == 'ngmesh':
+            with BytesIO(serialized_bytes) as ngmesh_stream:
+                vertices_xyz, faces = read_ngmesh(ngmesh_stream)
+            return Mesh(vertices_xyz[:,::-1], faces)
 
 
     @classmethod
@@ -712,7 +721,7 @@ class Mesh:
         elif fmt is None:
             fmt = 'obj'
             
-        assert fmt in ('obj', 'drc'), f"Unknown format: {fmt}"
+        assert fmt in ('obj', 'drc', 'ngmesh'), f"Unknown format: {fmt}"
 
         # Shortcut for empty mesh
         # Returns an empty buffer regardless of output format        
@@ -742,6 +751,11 @@ class Mesh:
                     f.write(draco_bytes)
             else:
                 return draco_bytes
+        elif fmt == 'ngmesh':
+            if path:
+                write_ngmesh(self.vertices_zyx[:,::-1], self.faces, path)
+            else:
+                return write_ngmesh(self.vertices_zyx[:,::-1], self.faces)
 
 
 def concatenate_meshes(meshes):
