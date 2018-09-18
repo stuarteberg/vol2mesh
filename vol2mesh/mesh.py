@@ -136,11 +136,15 @@ class Mesh:
         else:
             tf = tarfile.TarFile(fileobj=BytesIO(path_or_bytes))
         
+        # As a convenience, we sort the members by name before loading them.
+        # This ensures that tarball storage order doesn't affect vertex order.
+        members = sorted(tf.getmembers(), key=lambda m: m.name)
+
         meshes = []
-        for name in tf.getnames():
-            ext = name[-4:]
+        for member in members:
+            ext = member.name[-4:]
             if ext in ('.drc', '.obj', '.ngmesh'):
-                buf = tf.extractfile(name).read()
+                buf = tf.extractfile(member).read()
                 mesh = Mesh.from_buffer(buf, ext[1:])
                 meshes.append(mesh)
 
