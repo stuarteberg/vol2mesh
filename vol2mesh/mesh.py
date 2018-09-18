@@ -91,6 +91,13 @@ class Mesh:
         Read a mesh from .obj or .drc
         """
         ext = os.path.splitext(path)[1]
+        
+        # By special convention,
+        # we permit 0-sized files, which result in empty meshes
+        if os.path.getsize(path) == 0:
+            return Mesh(np.zeros((0,3), np.float32),
+                        np.zeros((0,3), np.uint32))
+        
         if ext == '.drc':
             with open(path, 'rb') as drc_stream:
                 draco_bytes = drc_stream.read()
@@ -143,7 +150,8 @@ class Mesh:
         meshes = []
         for member in members:
             ext = member.name[-4:]
-            if ext in ('.drc', '.obj', '.ngmesh'):
+            # Skip non-mesh files and empty files
+            if ext in ('.drc', '.obj', '.ngmesh') and member.size > 0:
                 buf = tf.extractfile(member).read()
                 mesh = Mesh.from_buffer(buf, ext[1:])
                 meshes.append(mesh)
