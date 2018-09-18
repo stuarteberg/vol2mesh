@@ -1,7 +1,17 @@
 """
 Functions to read/write mesh data in the binary format that neuroglancer uses internally.
 
-The binary format is simple:
+The binary layout is shown below.
+
+
+NOTE:
+    All vertex coordinates must be written in nanometer units.
+    FlyEM meshes from DVID are usually stored at 8.0 nm resolution,
+    so if you are converting a mesh from DVID to ngmesh, you should probably
+    pre-multiply all vertex coordinates by 8.0 before calling write_ngmesh().
+    Similarly, if you are reading an ngmesh and plan to store it in DVID
+    (or display it alongside DVID grayscale data), you should probably
+    divide its vertices by 8.0 immediately after calling read_ngmesh().
 
 num_vertices <uint32>
 vertex <float32>,<float32>,<float32>
@@ -20,12 +30,21 @@ import numpy as np
 def read_ngmesh(f):
     """
     Read vertices and faces from the given binary file object,
-    which is in ngmesh format as described above. 
+    which is in ngmesh format as described above.
+
+    Args:
+        f:
+            An open binary file object
+        
+    Returns:
+        (vertices_xyz, faces)
+        where vertices_xyz is a 2D array (N,3), in XYZ order.
     """
     num_vertices = np.frombuffer(f.read(4), np.uint32)[0]
     vertices_xyz = np.frombuffer(f.read(int(3*4*num_vertices)), np.float32).reshape(-1, 3)
     faces = np.frombuffer(f.read(), np.uint32).reshape(-1, 3)
     return vertices_xyz, faces
+
 
 def write_ngmesh(vertices_xyz, faces, f_out=None):
     """
@@ -62,11 +81,12 @@ def write_ngmesh(vertices_xyz, faces, f_out=None):
         # Write to the given file object
         _write_ngmesh(vertices_xyz, faces, f)
 
+
 def _write_ngmesh(vertices_xyz, faces, f_out):
     """
-    Write the given vertices and faces to the given
+    Write the given vertices (verbatim) and faces to the given
     binary file object, which must already be open.
     """
-    f_out.write(np.uint32(len(vertices_xyz)))
-    f_out.write(vertices_xyz.astype(np.float32, 'C', copy=False))
-    f_out.write(faces.astype(np.uint32, 'C', copy=False))
+    f_out.write( np.uint32(len(vertices_xyz)) )
+    f_out.write( vertices_xyz.astype(np.float32, 'C', copy=False) )
+    f_out.write( faces.astype(np.uint32, 'C', copy=False) )

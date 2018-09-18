@@ -34,17 +34,21 @@ def main():
                         help='Optional decimation to apply before serialization, between 0.01 (most aggressive) and 1.0 (no decimation, the default).')
     parser.add_argument('--drop-normals', action='store_true',
                         help='Drop the normals from the mesh before serializing it.')
+    parser.add_argument('--rescale-factor', '-r', type=float, default=1.0,
+                        help='Multiply by this factor before writing the mesh '
+                        '(e.g. ngmesh should be written at 1-nm resolution, so you should '
+                        'probably rescale by 8 for FlyEM FIBSEM data.)')
     parser.add_argument('server')
     parser.add_argument('uuid')
     parser.add_argument('tarsupervoxels_instance')
     parser.add_argument('body', nargs='+')
     args = parser.parse_args()
 
-    mesh_from_dvid_tarfile(args.server, args.uuid, args.tarsupervoxels_instance, args.body, args.simplify, args.drop_normals, args.output_path)
+    mesh_from_dvid_tarfile(args.server, args.uuid, args.tarsupervoxels_instance, args.body, args.simplify, args.drop_normals, args.rescale_factor, args.output_path)
     logger.info("DONE")
 
 
-def mesh_from_dvid_tarfile(server, uuid, tsv_instance, bodies, simplify=1.0, drop_normals=False, output_path='{body}.obj'):
+def mesh_from_dvid_tarfile(server, uuid, tsv_instance, bodies, simplify=1.0, drop_normals=False, rescale_factor=1.0, output_path='{body}.obj'):
     from neuclease.dvid import fetch_tarfile
 
     for body in bodies:
@@ -60,6 +64,10 @@ def mesh_from_dvid_tarfile(server, uuid, tsv_instance, bodies, simplify=1.0, dro
 
         if drop_normals:
             mesh.drop_normals() 
+
+        if rescale_factor != 1.0:
+            logger.info(f"Body {body}: Scaling by {rescale_factor}x")
+            mesh.vertices_zyx[:] *= rescale_factor
 
         p = output_path.format(body=body)
         logger.info(f"Body {body}: Serializing to {p}")
