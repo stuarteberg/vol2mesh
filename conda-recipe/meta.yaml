@@ -27,11 +27,10 @@ requirements:
     - python 3.6*
     - scikit-image >=0.13
     - fq-mesh-simplification
-    - draco
     - numpy
     - numba
     - pandas
-    - dvidutils >=0.0.post48
+    - dvidutils >=0.0.post63
     - python-lz4
 
 test:
