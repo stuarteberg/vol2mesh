@@ -124,7 +124,7 @@ class Mesh:
 
 
     @classmethod
-    def from_directory(cls, path):
+    def from_directory(cls, path, keep_normals=True):
         """
         Alternate constructor.
         Read all mesh files (either .drc or .obj) from a
@@ -132,11 +132,11 @@ class Mesh:
         """
         mesh_paths = glob.glob(f'{path}/*.drc') + glob.glob(f'{path}/*.obj')
         meshes = map(Mesh.from_file, mesh_paths)
-        return concatenate_meshes(meshes)
+        return concatenate_meshes(meshes, keep_normals)
 
 
     @classmethod
-    def from_tarfile(cls, path_or_bytes):
+    def from_tarfile(cls, path_or_bytes, keep_normals=True):
         """
         Alternate constructor.
         Read all mesh files (either .drc or .obj) from a .tar file
@@ -159,10 +159,14 @@ class Mesh:
             # Skip non-mesh files and empty files
             if ext in ('.drc', '.obj', '.ngmesh') and member.size > 0:
                 buf = tf.extractfile(member).read()
-                mesh = Mesh.from_buffer(buf, ext[1:])
+                try:
+                    mesh = Mesh.from_buffer(buf, ext[1:])
+                except:
+                    logger.error(f"Could not decode {member.name} ({member.size} bytes). Skipping!")
+                    continue
                 meshes.append(mesh)
 
-        return concatenate_meshes(meshes)
+        return concatenate_meshes(meshes, keep_normals)
 
     @classmethod
     def from_buffer(cls, serialized_bytes, fmt):
@@ -776,15 +780,23 @@ class Mesh:
                 return write_ngmesh(self.vertices_zyx[:,::-1], self.faces)
 
 
-def concatenate_meshes(meshes):
+def concatenate_meshes(meshes, keep_normals=True):
     """
     Combine the given list of Mesh objects into a single Mesh object,
     renumbering the face vertices as needed, and expanding the bounding box
     to encompass the union of the meshes.
     
-    If no meshes had normals, the result has no normals.
-    If all meshes had normals, the result preserves them.
-    It is an error to provide a mix of meshes that do and do not contain normals.
+    Args:
+        meshes:
+            iterable of Mesh objects
+        keep_normals:
+            If False, discard all normals
+            It True:
+                If no meshes had normals, the result has no normals.
+                If all meshes had normals, the result preserves them.
+                It is an error to provide a mix of meshes that do and do not contain normals.
+    Returns:
+        Mesh
     """
     if not isinstance(meshes, list):
         meshes = list(meshes)
@@ -792,12 +804,15 @@ def concatenate_meshes(meshes):
     vertex_counts = np.fromiter((len(mesh.vertices_zyx) for mesh in meshes), np.int64, len(meshes))
     face_counts = np.fromiter((len(mesh.faces) for mesh in meshes), np.int64, len(meshes))
 
-    _verify_concatenate_inputs(meshes, vertex_counts)
+    if keep_normals:
+        _verify_concatenate_inputs(meshes, vertex_counts)
+        concatenated_normals = np.concatenate( [mesh.normals_zyx for mesh in meshes] )
+    else:
+        concatenated_normals = None
 
-    # vertices and normals as simply concatenated
+    # vertices and normals are simply concatenated
     concatenated_vertices = np.concatenate( [mesh.vertices_zyx for mesh in meshes] )
-    concatenated_normals = np.concatenate( [mesh.normals_zyx for mesh in meshes] )
-
+    
     # Faces need to be renumbered so that they refer to the correct vertices in the combined list.
     concatenated_faces = np.ndarray((face_counts.sum(), 3), np.uint32)
 
