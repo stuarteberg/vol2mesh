@@ -84,6 +84,12 @@ class Mesh:
                                    np.ceil( self.vertices_zyx.max(axis=0) ) ] ).astype(np.int32)
 
 
+    def uncompressed_size(self):
+        """
+        Return the size of the uncompressed mesh data in bytes
+        """
+        return self.vertices_zyx.nbytes + self.normals_zyx.nbytes + self.faces.nbytes
+
     @classmethod
     def from_file(cls, path):
         """
