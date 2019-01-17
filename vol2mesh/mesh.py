@@ -249,8 +249,8 @@ class Mesh:
                 logger.error(msg)
                 raise RuntimeError(msg)
         except ValueError:
-            if downsampled_volume_zyx.all():
-                # Completely full boxes are not meshable -- they would be
+            if downsampled_volume_zyx.all() or not downsampled_volume_zyx.any():
+                # Completely full (or empty) boxes are not meshable -- they would be
                 # open on all sides, leaving no vertices or faces.
                 # Just return an empty mesh.
                 empty_vertices = np.zeros( (0, 3), dtype=np.float32 )
