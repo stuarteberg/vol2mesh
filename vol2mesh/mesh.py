@@ -136,13 +136,34 @@ class Mesh:
 
 
     @classmethod
-    def from_tarfile(cls, path_or_bytes, keep_normals=True):
+    def from_tarfile(cls, path_or_bytes, keep_normals=True, concatenate=True):
         """
         Alternate constructor.
         Read all mesh files (either .drc or .obj) from a .tar file
-        and concatenate them into one big mesh.
+        and concatenate them into one big mesh, or return them as a dict of
+        ``{name : mesh}`` items.
+        
+        Args:
+            path_or_bytes:
+                Either a path to a .tar file, or a bytes object
+                containing the contents of a .tar file.
+            
+            keep_normals:
+                Whether to keep the normals in the given meshes or discard them.
+                If not all of the meshes in the tarfile contain normals,
+                you will need to discard them.
+            
+            concatenate:
+                If True, concatenate all meshes into a single ``Mesh`` object.
+                Otherwise, return a dict of ``{name : Mesh}`` items,
+                named according to the names in the tarfile.
+        
         Note: The tar file structure should be completely flat,
         i.e. no internal directory.
+        
+        Returns:
+            Either a single ``Mesh``, or a dict of ``{name : Mesh}``,
+            depending on ``concatenate``.
         """
         if isinstance(path_or_bytes, str):
             tf = tarfile.open(path_or_bytes)
@@ -153,7 +174,7 @@ class Mesh:
         # This ensures that tarball storage order doesn't affect vertex order.
         members = sorted(tf.getmembers(), key=lambda m: m.name)
 
-        meshes = []
+        meshes = {}
         for member in members:
             ext = member.name[-4:]
             # Skip non-mesh files and empty files
@@ -164,9 +185,14 @@ class Mesh:
                 except:
                     logger.error(f"Could not decode {member.name} ({member.size} bytes). Skipping!")
                     continue
-                meshes.append(mesh)
 
-        return concatenate_meshes(meshes, keep_normals)
+                meshes[member.name] = mesh
+
+        if concatenate:
+            return concatenate_meshes(meshes.values(), keep_normals)
+        else:
+            return meshes
+
 
     @classmethod
     def from_buffer(cls, serialized_bytes, fmt):
