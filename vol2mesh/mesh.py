@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from skimage.measure import marching_cubes_lewiner
 
-import lz4
+import lz4.frame
 
 from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, decode_drc_bytes_to_faces
 
@@ -371,19 +371,19 @@ class Mesh:
             compressed = []
             
             flat_vertices = self._vertices_zyx.reshape(-1)
-            compressed.append( lz4.compress(flat_vertices) ) #@UndefinedVariable
+            compressed.append( lz4.frame.compress(flat_vertices) ) #@UndefinedVariable
             self._vertices_zyx = None
             
             flat_normals = self._normals_zyx.reshape(-1)
-            compressed.append( lz4.compress(flat_normals) ) #@UndefinedVariable
+            compressed.append( lz4.frame.compress(flat_normals) ) #@UndefinedVariable
             self._normals_zyx = None
     
             flat_faces = self._faces.reshape(-1)
-            compressed.append( lz4.compress(flat_faces) ) #@UndefinedVariable
+            compressed.append( lz4.frame.compress(flat_faces) ) #@UndefinedVariable
             self._faces = None
 
             # Compress twice: still fast, even smaller
-            self._lz4_items = list(map(lz4.compress, compressed)) #@UndefinedVariable
+            self._lz4_items = list(map(lz4.frame.compress, compressed)) #@UndefinedVariable
         
         return sum(map(len, self._lz4_items))
     
@@ -408,10 +408,10 @@ class Mesh:
 
     def _uncompress_from_lz4(self):
         # Note: data was compressed twice, so uncompress twice
-        uncompressed = list(map(lz4.uncompress, self._lz4_items)) #@UndefinedVariable
+        uncompressed = list(map(lz4.frame.decompress, self._lz4_items)) #@UndefinedVariable
         self._lz4_items = None
 
-        uncompressed = list(map(lz4.uncompress, uncompressed)) #@UndefinedVariable
+        uncompressed = list(map(lz4.frame.decompress, uncompressed)) #@UndefinedVariable
         vertices_buf, normals_buf, faces_buf = uncompressed
         del uncompressed
         
