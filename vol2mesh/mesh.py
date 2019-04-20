@@ -805,6 +805,26 @@ class Mesh:
             else:
                 return write_ngmesh(self.vertices_zyx[:,::-1], self.faces)
 
+    @classmethod
+    def concatenate_meshes(cls, meshes, keep_normals=True):
+        """
+        Combine the given list of Mesh objects into a single Mesh object,
+        renumbering the face vertices as needed, and expanding the bounding box
+        to encompass the union of the meshes.
+        
+        Args:
+            meshes:
+                iterable of Mesh objects
+            keep_normals:
+                If False, discard all normals
+                It True:
+                    If no meshes had normals, the result has no normals.
+                    If all meshes had normals, the result preserves them.
+                    It is an error to provide a mix of meshes that do and do not contain normals.
+        Returns:
+            Mesh
+        """
+        return concatenate_meshes(meshes, keep_normals)
 
 def concatenate_meshes(meshes, keep_normals=True):
     """
