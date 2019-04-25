@@ -371,19 +371,19 @@ class Mesh:
             compressed = []
             
             flat_vertices = self._vertices_zyx.reshape(-1)
-            compressed.append( lz4.frame.compress(flat_vertices) ) #@UndefinedVariable
+            compressed.append( lz4.frame.compress(flat_vertices) )
             self._vertices_zyx = None
             
             flat_normals = self._normals_zyx.reshape(-1)
-            compressed.append( lz4.frame.compress(flat_normals) ) #@UndefinedVariable
+            compressed.append( lz4.frame.compress(flat_normals) )
             self._normals_zyx = None
     
             flat_faces = self._faces.reshape(-1)
-            compressed.append( lz4.frame.compress(flat_faces) ) #@UndefinedVariable
+            compressed.append( lz4.frame.compress(flat_faces) )
             self._faces = None
 
             # Compress twice: still fast, even smaller
-            self._lz4_items = list(map(lz4.frame.compress, compressed)) #@UndefinedVariable
+            self._lz4_items = list(map(lz4.frame.compress, compressed))
         
         return sum(map(len, self._lz4_items))
     
@@ -408,10 +408,11 @@ class Mesh:
 
     def _uncompress_from_lz4(self):
         # Note: data was compressed twice, so uncompress twice
-        uncompressed = list(map(lz4.frame.decompress, self._lz4_items)) #@UndefinedVariable
+        uncompressed = list(map(lz4.frame.decompress, self._lz4_items))
         self._lz4_items = None
 
-        uncompressed = list(map(lz4.frame.decompress, uncompressed)) #@UndefinedVariable
+        decompress = lambda b: lz4.frame.decompress(b, return_bytearray=True)
+        uncompressed = list(map(decompress, uncompressed))
         vertices_buf, normals_buf, faces_buf = uncompressed
         del uncompressed
         
@@ -424,6 +425,7 @@ class Mesh:
         self._faces = np.frombuffer(faces_buf, np.uint32).reshape((-1,3))
         del faces_buf
 
+        # Should be writeable already
         self._vertices_zyx.flags['WRITEABLE'] = True
         self._normals_zyx.flags['WRITEABLE'] = True
         self._faces.flags['WRITEABLE'] = True
