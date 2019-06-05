@@ -762,7 +762,7 @@ class Mesh:
 
     def serialize(self, path=None, fmt=None):
         """
-        Serialize the mesh data in either .obj or .drc format.
+        Serialize the mesh data in either .obj, .drc, or .ngmesh format.
         If path is given, write to that file.
         Otherwise, return the serialized data as a bytes object.
         """
