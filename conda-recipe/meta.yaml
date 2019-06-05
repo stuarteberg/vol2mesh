@@ -30,7 +30,7 @@ requirements:
     - numpy
     - numba
     - pandas
-    - dvidutils >=0.0.post63
+    - dvidutils >=0.0.post81
     - lz4 >=2,<3
 
 test:
