@@ -12,8 +12,13 @@ from skimage.measure import marching_cubes_lewiner
 
 import lz4.frame
 
-from dvidutils import remap_duplicates, LabelMapper, encode_faces_to_drc_bytes, decode_drc_bytes_to_faces
-
+try:
+    from dvidutils import LabelMapper, encode_faces_to_drc_bytes, decode_drc_bytes_to_faces
+    _dvidutils_available = True
+except ImportError:
+    _dvidutils_available = False
+    
+from .util import first_occurrences
 from .normals import compute_face_normals, compute_vertex_normals
 from .obj_utils import write_obj, read_obj
 from .ngmesh import read_ngmesh, write_ngmesh
@@ -214,11 +219,16 @@ class Mesh:
             with BytesIO(serialized_bytes) as obj_stream:
                 vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
             return Mesh(vertices_zyx, faces, normals_zyx)
+
         elif fmt == 'drc':
+            assert _dvidutils_available, \
+                "Can't read draco meshes if dvidutils isn't installed"
+
             vertices_xyz, normals_xyz, faces = decode_drc_bytes_to_faces(serialized_bytes)
             vertices_zyx = vertices_xyz[:,::-1]
             normals_zyx = normals_xyz[:,::-1]
             return Mesh(vertices_zyx, faces, normals_zyx)
+
         elif fmt == 'ngmesh':
             with BytesIO(serialized_bytes) as ngmesh_stream:
                 vertices_xyz, faces = read_ngmesh(ngmesh_stream)
@@ -356,6 +366,8 @@ class Mesh:
     
 
     def _compress_as_draco(self):
+        assert _dvidutils_available, \
+            "Can't use draco compression if dvidutils isn't installed"
         if self._draco_bytes is None:
             self._uncompress() # Ensure not currently compressed as lz4
             self._draco_bytes = encode_faces_to_drc_bytes(self._vertices_zyx[:,::-1], self._normals_zyx[:,::-1], self._faces)
@@ -400,6 +412,8 @@ class Mesh:
     
 
     def _uncompress_from_draco(self):
+        assert _dvidutils_available, \
+            "Can't decode from draco if dvidutils isn't installed"
         vertices_xyz, normals_xyz, self._faces = decode_drc_bytes_to_faces(self._draco_bytes)
         self._vertices_zyx = vertices_xyz[:, ::-1]
         self._normals_zyx = normals_xyz[:, ::-1]
@@ -521,7 +535,7 @@ class Mesh:
         """
         need_normals = (self.normals_zyx.shape[0] > 0)
 
-        mapping_pairs = remap_duplicates(self.vertices_zyx)
+        mapping_pairs = first_occurrences(self.vertices_zyx)
         
         dup_indices, orig_indices = mapping_pairs.transpose()
         if len(dup_indices) == 0:
@@ -529,14 +543,24 @@ class Mesh:
                 self.recompute_normals(True)
             return False # No stitching was needed.
 
+        del mapping_pairs
+
         # Discard old normals
         self.drop_normals()
 
         # Remap faces to no longer refer to the duplicates
-        mapper = LabelMapper(dup_indices, orig_indices)
-        mapper.apply_inplace(self.faces, allow_unmapped=True)
-        del mapper
+        if _dvidutils_available:
+            mapper = LabelMapper(dup_indices, orig_indices)
+            mapper.apply_inplace(self.faces, allow_unmapped=True)
+            del mapper
+        else:
+            mapping = np.arange(len(self.vertices_zyx), dtype=np.int32)
+            mapping[dup_indices] = orig_indices
+            self.faces[:] = mapping[self.faces]
+            del mapping
+
         del orig_indices
+        del dup_indices
         
         # Now the faces have been stitched, but the duplicate
         # vertices are still unnecessarily present,
@@ -553,7 +577,7 @@ class Mesh:
             # betweeen clockwise/counter-clockwise ordering,
             # but that seems unlikely to be a problem in practice.
             sorted_faces = pd.DataFrame(np.sort(self.faces, axis=1))
-            duplicate_faces_mask = sorted_faces.duplicated()
+            duplicate_faces_mask = sorted_faces.duplicated().values
             faces_df = pd.DataFrame(self.faces)
             faces_df.drop(duplicate_faces_mask.nonzero()[0], inplace=True)
             self.faces = np.asarray(faces_df.values, order='C')
@@ -790,6 +814,8 @@ class Mesh:
                 return write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
 
         elif fmt == 'drc':
+            assert _dvidutils_available, \
+                "Can't use draco compression if dvidutils isn't installed"
             draco_bytes = self._draco_bytes
             if draco_bytes is None:
                 if self.normals_zyx.shape[0] == 0:
