@@ -26,6 +26,7 @@ requirements:
   run:
     - python {{ python }}
     - scikit-image >=0.13
+    - marching_cubes
     - fq-mesh-simplification
     - numpy
     - numba
@@ -38,7 +39,11 @@ test:
     - vol2mesh
 
   requires:
+    - pytest
     - scipy
+    
+  commands:
+    - pytest -s --tb=native --pyargs vol2mesh.tests
     
 about:
   home: https://github.com/mmorehea/vol2mesh
