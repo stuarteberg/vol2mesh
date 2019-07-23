@@ -13,6 +13,19 @@ def cross(u,v):
                      u3*v1 - u1*v3,
                      u1*v2 - u2*v1], dtype=u.dtype)
 
+
+@numba.jit(nopython=True, cache=True)
+def norm_l2(v):
+    """
+    Same as np.linalg.norm for a single-vector input.
+    
+    By avoiding np.linalg.norm, we can support running on numpy
+    installs that were not compiled with BLAS.
+    (Admittedly, that's a rare scenario.)
+    """
+    return np.sqrt((v**2).sum())
+
+
 @numba.jit(nopython=True, cache=True)
 def compute_face_normals(vertices_zyx, faces, normalize=False):
     """
@@ -38,13 +51,14 @@ def compute_face_normals(vertices_zyx, faces, normalize=False):
         v_normal = cross(v2, v1)    # This ordering is required for correct sign,
                                     # since the handedness of the coordinate system is different for zyx vs xyz
         if normalize:
-            norm = np.linalg.norm(v_normal)
+            norm = norm_l2(v_normal)
             if norm != 0.0:
                 v_normal[:] /= norm
         
         face_normals[i] = v_normal
 
     return face_normals
+
 
 @numba.jit(nopython=True, cache=True)
 def compute_vertex_normals(vertices_zyx, faces, weight_by_face_area=False, face_normals=None):
@@ -89,7 +103,7 @@ def compute_vertex_normals(vertices_zyx, faces, weight_by_face_area=False, face_
 
     for i in range(len(vertex_normals)):
         vn = vertex_normals[i]
-        norm = np.linalg.norm(vn)
+        norm = norm_l2(vn)
         if norm != 0:
             vn[:] /= norm
     
