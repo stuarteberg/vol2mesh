@@ -25,14 +25,18 @@ requirements:
 
   run:
     - python {{ python }}
-    - scikit-image >=0.13
-    - marching_cubes
-    - fq-mesh-simplification
     - numpy
     - numba
     - pandas
-    - dvidutils >=0.0.post81
     - lz4 >=2,<3
+
+    # See README for details about these dependencies
+    - marching_cubes
+    - fq-mesh-simplification
+    - dvidutils >=0.0.post81
+
+    # Optional dependency, for alternative marching-cubes implementation.
+    #- scikit-image >=0.13
 
 test:
   imports:
@@ -41,11 +45,12 @@ test:
   requires:
     - pytest
     - scipy
+    - scikit-image
     
   commands:
     - pytest -s --tb=native --pyargs vol2mesh.tests
     
 about:
-  home: https://github.com/mmorehea/vol2mesh
+  home: https://github.com/janelia-flyem/vol2mesh
   license: Unknown
   summary: Tools for converting image volumes to meshes

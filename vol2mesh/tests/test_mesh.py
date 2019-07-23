@@ -10,6 +10,13 @@ from vol2mesh.mesh import Mesh, concatenate_meshes
 import faulthandler
 faulthandler.enable()
 
+try:
+    import skimage
+    _skimage_available = True
+except ImportError:
+    _skimage_available = False
+    
+
 def box_to_slicing(start, stop):
     """
     For the given bounding box (start, stop),
@@ -67,6 +74,39 @@ def test_basic(binary_vol_input):
     nonzero_box *= FACTOR
     
     mesh = Mesh.from_binary_vol( binary_vol, data_box )
+    assert mesh.vertices_zyx.dtype == np.float32
+    
+    mesh_box = np.array([mesh.vertices_zyx.min(axis=0),
+                         mesh.vertices_zyx.max(axis=0)])
+    assert (mesh_box == nonzero_box).all(), f"{mesh_box.tolist()} != {nonzero_box.tolist()}"
+    
+    serialized = mesh.serialize(fmt='obj')
+    unserialized = mesh.from_buffer(serialized, 'obj')
+    assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
+    
+    serialized = mesh.serialize(fmt='drc')
+    unserialized = mesh.from_buffer(serialized, 'drc')
+    assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
+
+    serialized = mesh.serialize(fmt='ngmesh')
+    unserialized = mesh.from_buffer(serialized, 'ngmesh')
+    assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
+    
+
+def test_ilastik(binary_vol_input):
+    binary_vol, data_box, nonzero_box = binary_vol_input
+    # Pretend the data was downsampled and translated,
+    # and therefore the mesh requires upscaling and translation
+    data_box = np.array(data_box)
+    data_box += 1000
+    
+    nonzero_box = nonzero_box + 1000
+    
+    FACTOR = 2
+    data_box *= FACTOR
+    nonzero_box *= FACTOR
+    
+    mesh = Mesh.from_binary_vol( binary_vol, data_box, method='ilastik' )
     assert mesh.vertices_zyx.dtype == np.float32
     
     mesh_box = np.array([mesh.vertices_zyx.min(axis=0),
@@ -160,14 +200,15 @@ def test_blockwise_simple():
     
     #print(np.asarray(sorted(_mesh.vertices_zyx.tolist())))
     
-
+@pytest.mark.skipif(not _skimage_available, reason="Skipping skimage-based tests")
 def test_tiny_array():
     """
     Tiny arrays trigger an exception in skimage, so they must be padded first.
     Verify that they can be meshified (after padding).
     """
     one_voxel = np.ones((1,1,1), np.uint8)
-    _mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)] )
+    _mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)], method='skimage' )
+    _mesh = Mesh.from_binary_vol( one_voxel, [(0,0,0), (1,1,1)], method='ilastik' )
 
 
 def test_solid_array():
@@ -416,8 +457,9 @@ def test_normals_guarantees(binary_vol_input):
     assert stitching_performed
     assert duplicated_mesh.normals_zyx.shape[0] == 0
 
-def test_compress(self):
-    mesh_orig = Mesh.from_binary_vol( self.binary_vol, self.data_box )
+def test_compress(binary_vol_input):
+    binary_vol, data_box, _nonzero_box = binary_vol_input
+    mesh_orig = Mesh.from_binary_vol( binary_vol, data_box )
     uncompressed_size = mesh_orig.normals_zyx.nbytes + mesh_orig.vertices_zyx.nbytes + mesh_orig.faces.nbytes
     mesh = copy.deepcopy(mesh_orig)
     
@@ -495,7 +537,7 @@ def test_concatenate_with_normals(tiny_meshes):
 
     assert (combined_mesh.faces == expected_faces).all()
 
-def test_mismatches():
+def test_mismatches(tiny_meshes):
     mesh_1, mesh_2, mesh_3, _mesh_4 = tiny_meshes
     mesh_1.recompute_normals()
     

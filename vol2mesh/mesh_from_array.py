@@ -49,7 +49,7 @@ def mesh_from_array(volume_zyx,
     box = [ global_offset_zyx,
             global_offset_zyx + downsample_factor * np.asarray(volume_zyx.shape) ]
 
-    mesh = Mesh.from_binary_vol(volume_zyx, box, 'skimage')
+    mesh = Mesh.from_binary_vol(volume_zyx, box, 'ilastik')
 
     if compute_normals:
         # Explicitly discard any normals the mesh had.

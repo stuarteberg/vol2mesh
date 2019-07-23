@@ -8,8 +8,6 @@ from io import BytesIO
 
 import numpy as np
 import pandas as pd
-from skimage.measure import marching_cubes_lewiner
-
 import lz4.frame
 
 try:
@@ -236,7 +234,7 @@ class Mesh:
 
 
     @classmethod
-    def from_binary_vol(cls, downsampled_volume_zyx, fullres_box_zyx=None, method='skimage', step_size=1):
+    def from_binary_vol(cls, downsampled_volume_zyx, fullres_box_zyx=None, method='ilastik', **kwargs):
         """
         Alternate constructor.
         Run marching cubes on the given volume and return a Mesh object.
@@ -247,7 +245,13 @@ class Mesh:
             fullres_box_zyx:
                 The bounding-box inhabited by the given volume, in FULL-res coordinates.
             method:
-                Which library to use for marching_cubes. For now the only choice is 'skimage'.
+                Which library to use for marching_cubes. Choices are:
+                - "ilastik" -- Use github.com/ilastik/marching_cubes
+                - "skimage" -- Use scikit-image marching_cubes_lewiner
+                  (Not a required dependency.  Install ``scikit-image`` to use this method.)
+            kwargs:
+                Any extra arguments to the particular marching cubes implementation.
+                The 'ilastik' method supports initial smoothing via a ``smoothing_rounds`` parameter.
         """
         assert downsampled_volume_zyx.ndim == 3
         
@@ -261,6 +265,7 @@ class Mesh:
 
         try:
             if method == 'skimage':
+                from skimage.measure import marching_cubes_lewiner
                 padding = np.array([0,0,0])
                 
                 # Tiny volumes trigger a corner case in skimage, so we pad them with zeros.
@@ -271,7 +276,9 @@ class Mesh:
                     padding = np.maximum([0,0,0], padding)
                     downsampled_volume_zyx = np.pad( downsampled_volume_zyx, tuple(zip(padding, padding)), 'constant' )
 
-                vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, step_size=step_size)
+                kws = {'step_size': 1}
+                kws.update(kwargs)
+                vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, **kws)
                 
                 # Skimage assumes that the coordinate origin is CENTERED inside pixel (0,0,0),
                 # whereas we assume that the origin is the UPPER-LEFT corner of pixel (0,0,0).
@@ -280,8 +287,22 @@ class Mesh:
 
                 if padding.any():
                     vertices_zyx -= padding
+            elif method == 'ilastik':
+                from marching_cubes import march
+                try:
+                    smoothing_rounds = kwargs['smoothing_rounds']
+                except KeyError:
+                    smoothing_rounds = 0
+
+                vertices_xyz, normals_xyz, faces = march(downsampled_volume_zyx, smoothing_rounds)
+                vertices_zyx = vertices_xyz[:, ::-1]
+                
+                # ilastik marching cubes gives slightly different results than skimage
+                vertices_zyx += 0.5
+                
+                normals_zyx = normals_xyz[:, ::-1]
             else:
-                msg = f"Uknown method: {method}"
+                msg = f"Unknown method: {method}"
                 logger.error(msg)
                 raise RuntimeError(msg)
         except ValueError:
