@@ -141,9 +141,23 @@ def read_obj(mesh_bytestream):
         faces_normal_indices -= 1
         
         if len(faces_normal_indices) > 0:
+            #
+            # Notice that we don't permit the same vertex to have two different normals,
+            # even if the vertex is referenced in two different faces.
+            # Hence the caveat above about out-of-order vertex normals being unsupported..
+            #
             normals_zyx = np.zeros(vertices_xyz.shape, dtype=np.float32)
             normals_xyz = normals_zyx[:, ::-1]
-            # TODO: Speed up this loop with fancy indexing or numba
+            #
+            # TODO:
+            #   Speed up this loop with fancy indexing
+            #   I think this would work (untested):
+            #
+            #     normals_xyz[(faces[:, 0],)] = listed_normals_xyz[(faces_normal_indices[:,0],)]
+            #     normals_xyz[(faces[:, 1],)] = listed_normals_xyz[(faces_normal_indices[:,1],)]
+            #     normals_xyz[(faces[:, 2],)] = listed_normals_xyz[(faces_normal_indices[:,2],)]
+            #
+            #
             for face, normal_indices in zip(faces, faces_normal_indices):
                 normals_xyz[face[0]] = listed_normals_xyz[normal_indices[0]]
                 normals_xyz[face[1]] = listed_normals_xyz[normal_indices[1]]
