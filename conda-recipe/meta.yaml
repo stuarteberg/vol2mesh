@@ -26,7 +26,6 @@ requirements:
   run:
     - python {{ python }}
     - numpy
-    - numba
     - pandas
     - lz4 >=2,<3
 
@@ -37,6 +36,9 @@ requirements:
 
     # Optional dependency, for alternative marching-cubes implementation.
     #- scikit-image >=0.13
+
+    # Optional dependency.
+    #- numba
 
 test:
   imports:

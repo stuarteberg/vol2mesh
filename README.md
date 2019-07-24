@@ -65,8 +65,10 @@ Appendix: Dependencies
    - https://github.com/sp4cerat/Fast-Quadric-Mesh-Simplification
 - We support the [draco] compressed mesh serialization format via functions from [`dvidutils`][dvidutils].  Technically, this is an optional dependency, even though our conda recipe pulls it in.  If you want to run this code on Windows, just drop the `dvidutils` requirement and everything in the `vol2mesh` code base works without it except for `draco`.
 - The default marching cubes implementation is from the ilastik project's [`marching_cubes` library][marching_cubes].
-- Optionally, we support `skimage.marching_cubes_lewiner()` as an alternative, but you must install `scikit-image` yourself (it is not pulled in as a required dependency.
+  - Optionally, we support `skimage.marching_cubes_lewiner()` as an alternative, but you must install `scikit-image` yourself (it is not pulled in as a required dependency.
+- Computation of vertex normals is *slightly* (2x) faster if you have [`numba`][numba] installed, but it's not a required dependency. 
 
 [dvidutils]: https://github.com/stuarteberg/dvidutils
 [draco]: https://github.com/google/draco
 [marching_cubes]: https://github.com/ilastik/marching_cubes
+[numba]: https://numba.pydata.org

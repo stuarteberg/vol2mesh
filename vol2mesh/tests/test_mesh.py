@@ -93,39 +93,6 @@ def test_basic(binary_vol_input):
     assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
     
 
-def test_ilastik(binary_vol_input):
-    binary_vol, data_box, nonzero_box = binary_vol_input
-    # Pretend the data was downsampled and translated,
-    # and therefore the mesh requires upscaling and translation
-    data_box = np.array(data_box)
-    data_box += 1000
-    
-    nonzero_box = nonzero_box + 1000
-    
-    FACTOR = 2
-    data_box *= FACTOR
-    nonzero_box *= FACTOR
-    
-    mesh = Mesh.from_binary_vol( binary_vol, data_box, method='ilastik' )
-    assert mesh.vertices_zyx.dtype == np.float32
-    
-    mesh_box = np.array([mesh.vertices_zyx.min(axis=0),
-                         mesh.vertices_zyx.max(axis=0)])
-    assert (mesh_box == nonzero_box).all(), f"{mesh_box.tolist()} != {nonzero_box.tolist()}"
-    
-    serialized = mesh.serialize(fmt='obj')
-    unserialized = mesh.from_buffer(serialized, 'obj')
-    assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
-    
-    serialized = mesh.serialize(fmt='drc')
-    unserialized = mesh.from_buffer(serialized, 'drc')
-    assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
-
-    serialized = mesh.serialize(fmt='ngmesh')
-    unserialized = mesh.from_buffer(serialized, 'ngmesh')
-    assert len(unserialized.vertices_zyx) == len(mesh.vertices_zyx)
-    
-
 def test_blockwise(binary_vol_input):
     binary_vol, data_box, nonzero_box = binary_vol_input
     data_box = np.array(data_box)
@@ -381,6 +348,35 @@ def test_pickling_empty():
     assert len(unpickled.vertices_zyx) == 0
     assert len(unpickled.faces) == 0
 
+
+def test_normals_implementations(binary_vol_input):
+    """
+    Compare the numpy-based and numba-based normals computation implementations.
+    """
+    binary_vol, data_box, _nonzero_box = binary_vol_input
+
+    try:
+        from vol2mesh.normals import (compute_face_normals, compute_face_normals_numba, compute_face_normals_numpy, 
+                                      compute_vertex_normals, compute_vertex_normals_numba, compute_vertex_normals_numpy)
+    except ImportError:
+        pytest.skip("numba not installed")
+
+    mesh = Mesh.from_binary_vol( binary_vol, data_box )
+
+    face_normals_default = compute_face_normals(mesh.vertices_zyx, mesh.faces, normalize=True)
+    face_normals_numba = compute_face_normals_numba(mesh.vertices_zyx, mesh.faces, normalize=True)
+    face_normals_numpy = compute_face_normals_numpy(mesh.vertices_zyx, mesh.faces, normalize=True)
+    assert np.allclose(face_normals_numba, face_normals_default)
+    assert np.allclose(face_normals_numba, face_normals_numpy)
+
+    vertex_normals_default = compute_vertex_normals(mesh.vertices_zyx, mesh.faces, weight_by_face_area=False, face_normals=face_normals_default)
+    vertex_normals_numba = compute_vertex_normals_numba(mesh.vertices_zyx, mesh.faces, weight_by_face_area=False, face_normals=face_normals_numba)
+    vertex_normals_numpy = compute_vertex_normals_numpy(mesh.vertices_zyx, mesh.faces, weight_by_face_area=False, face_normals=face_normals_numpy)
+    assert np.allclose(vertex_normals_numba, vertex_normals_default)
+    assert np.allclose(vertex_normals_numba, vertex_normals_numpy)
+
+    compute_vertex_normals
+
 def test_normals_guarantees(binary_vol_input):
     """
     Member functions have guarantees about whether normals are present or absent after the function runs.
@@ -555,5 +551,5 @@ def test_mismatches(tiny_meshes):
 
 if __name__ == "__main__":
     args = ['-s', '--tb=native', '--pyargs', __file__]
-    #args += ['-k' 'ilastik']
+    #args += ['-k' 'normals_implementations']
     pytest.main(args)
