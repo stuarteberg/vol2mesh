@@ -26,7 +26,6 @@ requirements:
   run:
     - python {{ python }}
     - numpy
-    - pandas
     - lz4 >=2,<3
 
     # See README for details about these dependencies
@@ -37,8 +36,15 @@ requirements:
     # Optional dependency, for alternative marching-cubes implementation.
     #- scikit-image >=0.13
 
-    # Optional dependency.
+    # numba is an optional dependency
     #- numba
+
+    # pandas is a semi-optional dependency.
+    # Required for the following methods:
+    #   * Mesh.laplacian_smooth()
+    #   * Mesh.stitch_adjacent_faces()
+    #
+    #- pandas
 
 test:
   imports:
@@ -46,8 +52,10 @@ test:
 
   requires:
     - pytest
+    - pandas
     - scipy
     - scikit-image
+    - numba
     
   commands:
     - pytest -s --tb=native --pyargs vol2mesh.tests

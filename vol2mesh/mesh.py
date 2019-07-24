@@ -7,7 +7,6 @@ import subprocess
 from io import BytesIO
 
 import numpy as np
-import pandas as pd
 import lz4.frame
 
 try:
@@ -554,6 +553,8 @@ class Mesh:
             or True otherwise.
         
         """
+        # Late import: pandas is optional if you don't need all functions
+        import pandas as pd
         need_normals = (self.normals_zyx.shape[0] > 0)
 
         mapping_pairs = first_occurrences(self.vertices_zyx)
@@ -616,6 +617,9 @@ class Mesh:
         Drop all unused vertices (and corresponding normals) from the mesh,
         defined as vertex indices that are not referenced by any faces.
         """
+        # Late import: pandas is optional if you don't need all functions
+        import pandas as pd
+
         _used_vertices = pd.Series(self.faces.flat).unique()
         all_vertices = pd.DataFrame(np.arange(len(self.vertices_zyx), dtype=int), columns=['vertex_index'])
         unused_vertices = all_vertices.query('vertex_index not in @_used_vertices')['vertex_index'].values
@@ -743,6 +747,9 @@ class Mesh:
             - Try smoothing "boundary" meshes independently from the rest of the mesh (less shrinkage)
             - Try "Cotangent Laplacian Smoothing"
         """
+        # Late import: pandas is optional if you don't need all functions
+        import pandas as pd
+
         if iterations == 0:
             if self.normals_zyx.shape[0] == 0:
                 self.recompute_normals(True)

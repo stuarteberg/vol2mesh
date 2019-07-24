@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 
 try:
     from dvidutils import remap_duplicates
@@ -53,6 +52,7 @@ def first_occurrences_pandas(vertices):
        ...
       ]
     """
+    import pandas as pd
     if isinstance(vertices, pd.DataFrame):
         df = vertices
     else:
