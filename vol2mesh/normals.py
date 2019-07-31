@@ -79,7 +79,8 @@ def compute_face_normals_numpy(vertices_zyx, faces, normalize=False):
     v1 = corners_1 - corners_0
     v2 = corners_2 - corners_1
 
-    v_normal = np.cross(v2, v1)
+    v_normal = np.cross(v2, v1) # This ordering is required for correct sign,
+                                # since the handedness of the coordinate system is different for zyx vs xyz
     
     if normalize:
         magnitudes = np.linalg.norm(v_normal, axis=-1)
@@ -96,9 +97,9 @@ def compute_vertex_normals_numpy(vertices_zyx, faces, weight_by_face_area=False,
     vertex_normals = np.zeros(vertices_zyx.shape, np.float32)
 
     # Each vertex normal is the average of the normals from its N adjacent faces.
-    # But an easier way to write this is to realize thateach face normal contributes to
-    # exactly three vertex normals.  So just sum up each face's contributions
-    # to the appropriate vertex normals.
+    # But an easier way to write this is to realize that each face normal contributes
+    # to exactly three vertex normals.  So just sum up each face's contributions
+    # to its neighboring vertex normals.
     np.add.at(vertex_normals, faces[:, 0], face_normals)
     np.add.at(vertex_normals, faces[:, 1], face_normals)
     np.add.at(vertex_normals, faces[:, 2], face_normals)
@@ -167,9 +168,9 @@ if _numba_available:
         vertex_normals = np.zeros(vertices_zyx.shape, np.float32)
     
         # Each vertex normal is the average of the normals from its N adjacent faces.
-        # But an easier way to write this is to realize thateach face normal contributes to
-        # exactly three vertex normals.  So just sum up each face's contributions
-        # to the appropriate vertex normals.
+        # But an easier way to write this is to realize that each face normal contributes
+        # to exactly three vertex normals.  So just sum up each face's contributions
+        # to its neighboring vertex normals.
         for i in range(len(faces)):
             face = faces[i]
             fn = face_normals[i]
