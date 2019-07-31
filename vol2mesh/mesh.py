@@ -293,13 +293,18 @@ class Mesh:
                 except KeyError:
                     smoothing_rounds = 0
 
-                vertices_xyz, normals_xyz, faces = march(downsampled_volume_zyx, smoothing_rounds)
-                vertices_zyx = vertices_xyz[:, ::-1]
-                
-                # ilastik marching cubes gives slightly different results than skimage
+                # ilastik's marching_cubes expects FORTRAN order
+                if downsampled_volume_zyx.flags['F_CONTIGUOUS']:
+                    vertices_zyx, normals_zyx, faces = march(downsampled_volume_zyx, smoothing_rounds)
+                else:
+                    downsampled_volume_zyx = np.asarray(downsampled_volume_zyx, order='C')
+                    vertices_xyz, normals_xyz, faces = march(downsampled_volume_zyx.transpose(), smoothing_rounds)
+                    vertices_zyx = vertices_xyz[:, ::-1]
+                    normals_zyx = normals_xyz[:, ::-1]
+                    faces[:] = faces[:, ::-1]
+
                 vertices_zyx += 0.5
                 
-                normals_zyx = normals_xyz[:, ::-1]
             else:
                 msg = f"Unknown method: {method}"
                 logger.error(msg)
