@@ -48,6 +48,8 @@ def compute_vertex_normals(vertices_zyx, faces, weight_by_face_area=False, face_
 
     # numba is slightly faster for vertex normals, but not face normals
     if _numba_available:
+        assert vertices_zyx.dtype == np.float32, \
+            f"Our numba implementation requires float32 vertices, not {vertices_zyx.dtype}"
         return compute_vertex_normals_numba(vertices_zyx, faces, weight_by_face_area, face_normals)
     else:
         return compute_vertex_normals_numpy(vertices_zyx, faces, weight_by_face_area, face_normals)
@@ -105,7 +107,8 @@ def compute_vertex_normals_numpy(vertices_zyx, faces, weight_by_face_area=False,
     np.add.at(vertex_normals, faces[:, 2], face_normals)
 
     magnitudes = np.linalg.norm(vertex_normals, axis=-1)
-    vertex_normals[magnitudes != 0, :] /= magnitudes[magnitudes != 0, None]
+    nonzero_mags = magnitudes != 0
+    vertex_normals[nonzero_mags, :] /= magnitudes[nonzero_mags, None]
 
     return vertex_normals
 
