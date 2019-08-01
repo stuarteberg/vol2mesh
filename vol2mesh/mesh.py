@@ -113,7 +113,9 @@ class Mesh:
 
         elif ext == '.obj':
             with open(path, 'rb') as obj_stream:
-                vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
+                vertices_xyz, faces, normals_xyz = read_obj(obj_stream)
+                vertices_zyx = vertices_xyz[:,::-1]
+                normals_zyx = normals_xyz[:,::-1]
             return Mesh(vertices_zyx, faces, normals_zyx)
         elif ext == '.ngmesh':
             with open(path, 'rb') as ngmesh_stream:
@@ -214,7 +216,9 @@ class Mesh:
 
         if fmt == 'obj':
             with BytesIO(serialized_bytes) as obj_stream:
-                vertices_zyx, faces, normals_zyx = read_obj(obj_stream)
+                vertices_xyz, faces, normals_xyz = read_obj(obj_stream)
+                vertices_zyx = vertices_xyz[:,::-1]
+                normals_zyx = normals_xyz[:,::-1]
             return Mesh(vertices_zyx, faces, normals_zyx)
 
         elif fmt == 'drc':
@@ -691,7 +695,7 @@ class Mesh:
             return self
 
         if in_memory:
-            obj_bytes = write_obj(self.vertices_zyx, self.faces)
+            obj_bytes = write_obj(self.vertices_zyx[:,::-1], self.faces)
             bytes_stream = BytesIO(obj_bytes)
     
             simplify_input_pipe = TemporaryNamedPipe('input.obj')
@@ -704,7 +708,8 @@ class Mesh:
             mesh_stream = simplify_output_pipe.open_stream('rb')
             
             # The fq-mesh-simplify tool does not compute normals.
-            self.vertices_zyx, self.faces, _empty_normals = read_obj(mesh_stream)
+            vertices_xyz, self.faces, _empty_normals = read_obj(mesh_stream)
+            self.vertices_zyx = vertices_xyz[:,::-1]
             mesh_stream.close()
     
             proc.wait(timeout=1.0)
@@ -717,11 +722,13 @@ class Mesh:
             obj_dir = AutoDeleteDir()
             undecimated_path = f'{obj_dir}/undecimated.obj'
             decimated_path = f'{obj_dir}/decimated.obj'
-            write_obj(self.vertices_zyx, self.faces, output_file=undecimated_path)
+            write_obj(self.vertices_zyx[:,::-1], self.faces, output_file=undecimated_path)
             cmd = f'fq-mesh-simplify {undecimated_path} {decimated_path} {fraction}'
             subprocess.check_call(cmd, shell=True, timeout=timeout)
             with open(decimated_path, 'rb') as decimated_stream:
-                self.vertices_zyx, self.faces, _empty_normals = read_obj(decimated_stream)
+                # The fq-mesh-simplify tool does not compute normals.
+                vertices_xyz, self.faces, _empty_normals = read_obj(decimated_stream)
+                self.vertices_zyx = vertices_xyz[:,::-1]
 
         # Force normal reomputation to eliminate possible degenerate faces
         # (Can decimation produce degenerate faces?)
@@ -842,9 +849,9 @@ class Mesh:
         if fmt == 'obj':
             if path:
                 with open(path, 'wb') as f:
-                    write_obj(self.vertices_zyx, self.faces, self.normals_zyx, f)
+                    write_obj(self.vertices_zyx[:,::-1], self.faces, self.normals_zyx[:,::-1], f)
             else:
-                return write_obj(self.vertices_zyx, self.faces, self.normals_zyx)
+                return write_obj(self.vertices_zyx[:,::-1], self.faces, self.normals_zyx[:,::-1])
 
         elif fmt == 'drc':
             assert _dvidutils_available, \

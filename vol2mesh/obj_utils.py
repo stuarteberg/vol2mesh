@@ -2,21 +2,21 @@ from io import BytesIO
 from pathlib import Path
 import numpy as np
 
-def write_obj(vertices_zyx, faces, normals_zyx=None, output_file=None):
+def write_obj(vertices_xyz, faces, normals_xyz=None, output_file=None):
     """
     Generate an OBJ file from the given (binary) data and write it to the given byte stream or file path.
     
     If no output stream/path is given, return a bytes object containing the OBJ data.
 
-    vertices_zyx: np.ndarray, shape=(N,3), dtype=float
+    vertices_xyz: np.ndarray, shape=(N,3), dtype=float
     faces: np.ndarray, shape=(N,3), dtype=int
-    normals_zyx: np.ndarray, shape=(N,3), dtype=float (Optional.)
+    normals_xyz: np.ndarray, shape=(N,3), dtype=float (Optional.)
     
-    Note: Each 'face' consists of 3 indexes, which correspond to indexes in the vertices_zyx.
+    Note: Each 'face' consists of 3 indexes, which correspond to indexes in the vertices_xyz.
           The indexes should be 0-based. (They will be converted to 1-based in the OBJ)
     """
-    if normals_zyx is None:
-        normals_zyx = np.zeros((0,3), np.float32)
+    if normals_xyz is None:
+        normals_xyz = np.zeros((0,3), np.float32)
 
     need_close = True
 
@@ -30,36 +30,32 @@ def write_obj(vertices_zyx, faces, normals_zyx=None, output_file=None):
         need_close = False
     
     try:
-        _write_obj(vertices_zyx, faces, normals_zyx, mesh_bytestream)
+        _write_obj(vertices_xyz, faces, normals_xyz, mesh_bytestream)
         if output_file is None:
             return mesh_bytestream.getvalue()
     finally:
         if need_close:
             mesh_bytestream.close()
 
-def _write_obj(vertices_zyx, faces, normals_zyx, mesh_bytestream):
+def _write_obj(vertices_xyz, faces, normals_xyz, mesh_bytestream):
     """
     Given lists of vertices and faces, write them to the given stream in .obj format.
     
-    vertices_zyx: np.ndarray, shape=(N,3), dtype=float
+    vertices_xyz: np.ndarray, shape=(N,3), dtype=float
     faces: np.ndarray, shape=(N,3), dtype=int
-    normals_zyx: np.ndarray, shape=(N,3), dtype=float
+    normals_xyz: np.ndarray, shape=(N,3), dtype=float
     
-    Note: Each 'face' consists of 3 indexes, which correspond to indexes in the vertices_zyx.
+    Note: Each 'face' consists of 3 indexes, which correspond to indexes in the vertices_xyz.
           The indexes should be 0-based. (They will be converted to 1-based in the OBJ)
         
     Returns:
         BytesIO
     """
-    if len(vertices_zyx) == 0:
+    if len(vertices_xyz) == 0:
         # Empty meshes result in no bytes
         return
 
     mesh_bytestream.write(b"# OBJ file\n")
-
-    # OBJ format: XYZ order
-    vertices_xyz = vertices_zyx[:, ::-1]
-    normals_xyz = normals_zyx[:, ::-1]
 
     for (x,y,z) in vertices_xyz:
         mesh_bytestream.write(f"v {x:.7g} {y:.7g} {z:.7g}\n".encode('utf-8'))
@@ -89,7 +85,7 @@ def read_obj(mesh_bytestream):
         f 20//1 30//2 40//3        # <-- NOT SUPPORTED (out-of-order vertex normals)
     
     Returns:
-        vertices_zyx, faces, normals_zyx
+        vertices_xyz, faces, normals_xyz
         
         Note that the 'faces' indexes are 0-based
         (python conventions, not OBJ conventions, which start with 1)
@@ -146,8 +142,7 @@ def read_obj(mesh_bytestream):
             # even if the vertex is referenced in two different faces.
             # Hence the caveat above about out-of-order vertex normals being unsupported..
             #
-            normals_zyx = np.zeros(vertices_xyz.shape, dtype=np.float32)
-            normals_xyz = normals_zyx[:, ::-1]
+            normals_xyz = np.zeros(vertices_xyz.shape, dtype=np.float32)
             #
             # TODO:
             #   Speed up this loop with fancy indexing
@@ -162,19 +157,18 @@ def read_obj(mesh_bytestream):
                 normals_xyz[face[0]] = listed_normals_xyz[normal_indices[0]]
                 normals_xyz[face[1]] = listed_normals_xyz[normal_indices[1]]
                 normals_xyz[face[2]] = listed_normals_xyz[normal_indices[2]]
+
         elif len(listed_normals_xyz) > 0:
             if len(listed_normals_xyz) != len(vertices_xyz):
                 raise RuntimeError("Listed normals do not match number of listed vertices")
-            normals_zyx = listed_normals_xyz[:, ::-1]
         else:
-            normals_zyx = np.zeros( (0,3), np.float32 )
+            normals_xyz = np.zeros( (0,3), np.float32 )
 
-        vertices_zyx = vertices_xyz[:, ::-1]
-        
-        if len(faces) > 0 and faces.max() >= len(vertices_zyx):
+       
+        if len(faces) > 0 and faces.max() >= len(vertices_xyz):
             raise RuntimeError(f"Unexpected format: A face referenced vertex {faces.max()}, which is out-of-bounds for the vertex list.")
 
-        return vertices_zyx, faces, normals_zyx
+        return vertices_xyz, faces, normals_xyz
     finally:
         if need_close:
             mesh_bytestream.close()
