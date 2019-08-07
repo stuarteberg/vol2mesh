@@ -629,7 +629,7 @@ class Mesh:
         # Late import: pandas is optional if you don't need all functions
         import pandas as pd
 
-        _used_vertices = pd.Series(self.faces.flat).unique()
+        _used_vertices = pd.Series(self.faces.reshape(-1)).unique()
         all_vertices = pd.DataFrame(np.arange(len(self.vertices_zyx), dtype=int), columns=['vertex_index'])
         unused_vertices = all_vertices.query('vertex_index not in @_used_vertices')['vertex_index'].values
 
@@ -784,7 +784,7 @@ class Mesh:
         edges_df.sort_values(['v1_id', 'v2_id'], inplace=True)
 
         # How many neighbors for each vertex == how many times it is mentioned in the edge list
-        neighbor_counts = np.bincount(edges_df.values.flat, minlength=len(self.vertices_zyx))
+        neighbor_counts = np.bincount(edges_df.values.reshape(-1), minlength=len(self.vertices_zyx))
         
         new_vertices_zyx = np.empty_like(self.vertices_zyx)
         for _ in range(iterations):
