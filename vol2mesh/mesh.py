@@ -5,6 +5,7 @@ import tarfile
 import functools
 import subprocess
 from io import BytesIO
+from itertools import chain
 
 import numpy as np
 import lz4.frame
@@ -134,7 +135,8 @@ class Mesh:
         Read all mesh files (either .drc or .obj) from a
         directory and concatenate them into one big mesh.
         """
-        mesh_paths = glob.glob(f'{path}/*.drc') + glob.glob(f'{path}/*.obj')
+        exts = ['.drc', '.obj', '.ngmesh']
+        mesh_paths = chain(*[glob.glob(f'{path}/*{ext}') for ext in exts])
         meshes = map(Mesh.from_file, mesh_paths)
         return concatenate_meshes(meshes, keep_normals)
 
