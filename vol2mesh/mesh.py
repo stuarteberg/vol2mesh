@@ -93,6 +93,7 @@ class Mesh:
         """
         return self.vertices_zyx.nbytes + self.normals_zyx.nbytes + self.faces.nbytes
 
+
     @classmethod
     def from_file(cls, path):
         """
@@ -137,6 +138,7 @@ class Mesh:
         """
         exts = ['.drc', '.obj', '.ngmesh']
         mesh_paths = chain(*[glob.glob(f'{path}/*{ext}') for ext in exts])
+        mesh_paths = sorted(mesh_paths)
         meshes = map(Mesh.from_file, mesh_paths)
         return concatenate_meshes(meshes, keep_normals)
 
@@ -499,6 +501,7 @@ class Mesh:
         self._normals_zyx = None
         self._destroyed = True
 
+
     def auto_uncompress(f): # @NoSelf
         """
         Decorator.
@@ -511,6 +514,7 @@ class Mesh:
                 self._uncompress()
             return f(self, *args, **kwargs)
         return wrapper
+
 
     @property
     @auto_uncompress
@@ -542,6 +546,7 @@ class Mesh:
     def normals_zyx(self, new_normals_zyx):
         self._normals_zyx = new_normals_zyx
     
+
     def stitch_adjacent_faces(self, drop_unused_vertices=True, drop_duplicate_faces=True):
         """
         Search for duplicate vertices and remove all references to them in self.faces,
@@ -622,6 +627,7 @@ class Mesh:
             self.recompute_normals(True)
 
         return True # stitching was needed.
+
 
     def drop_unused_vertices(self):
         """
@@ -736,6 +742,7 @@ class Mesh:
         # (Can decimation produce degenerate faces?)
         self.recompute_normals(True)
 
+
     def laplacian_smooth(self, iterations=1):
         """
         Smooth the mesh in-place.
@@ -826,6 +833,7 @@ class Mesh:
         self.recompute_normals(True)
         assert self.normals_zyx.shape == self.vertices_zyx.shape
 
+
     def serialize(self, path=None, fmt=None):
         """
         Serialize the mesh data in either .obj, .drc, or .ngmesh format.
@@ -875,6 +883,7 @@ class Mesh:
             else:
                 return write_ngmesh(self.vertices_zyx[:,::-1], self.faces)
 
+
     @classmethod
     def concatenate_meshes(cls, meshes, keep_normals=True):
         """
@@ -895,6 +904,7 @@ class Mesh:
             Mesh
         """
         return concatenate_meshes(meshes, keep_normals)
+
 
 def concatenate_meshes(meshes, keep_normals=True):
     """
@@ -947,6 +957,7 @@ def concatenate_meshes(meshes, keep_normals=True):
                             all_boxes[:,1,:].max(axis=0) ] )
 
     return Mesh( concatenated_vertices, concatenated_faces, concatenated_normals, total_box )
+
 
 def _verify_concatenate_inputs(meshes, vertex_counts):
     normals_counts = np.fromiter((len(mesh.normals_zyx) for mesh in meshes), np.int64, len(meshes))

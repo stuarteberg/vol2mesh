@@ -27,7 +27,7 @@ face <uint32>,<uint32>,<uint32>
 import io
 import numpy as np
 
-def read_ngmesh(f):
+def read_ngmesh(f, mutable=False):
     """
     Read vertices and faces from the given binary file object,
     which is in ngmesh format as described above.
@@ -35,6 +35,8 @@ def read_ngmesh(f):
     Args:
         f:
             An open binary file object
+        mutable:
+            If True, return mutable arrays (requires an extra copy)
         
     Returns:
         (vertices_xyz, faces)
@@ -43,7 +45,11 @@ def read_ngmesh(f):
     num_vertices = np.frombuffer(f.read(4), np.uint32)[0]
     vertices_xyz = np.frombuffer(f.read(int(3*4*num_vertices)), np.float32).reshape(-1, 3)
     faces = np.frombuffer(f.read(), np.uint32).reshape(-1, 3)
-    return vertices_xyz, faces
+    
+    if mutable:
+        return vertices_xyz.copy(), faces.copy()
+    else:
+        return vertices_xyz, faces
 
 
 def write_ngmesh(vertices_xyz, faces, f_out=None):
@@ -90,3 +96,37 @@ def _write_ngmesh(vertices_xyz, faces, f_out):
     f_out.write( np.uint32(len(vertices_xyz)) )
     f_out.write( vertices_xyz.astype(np.float32, 'C', copy=False) )
     f_out.write( faces.astype(np.uint32, 'C', copy=False) )
+
+
+def concatenate_ngmesh_files(paths, output_path):
+    """
+    Concatenate the ngmesh files into a single, combined file.
+
+    The vertex coordinates are simply concatenated into one big list,
+    but the vertex indices in the faces array need to be offset
+    according to the vertexes' new positions in the final vertex list.
+    
+    Args: 
+        paths:
+            A list of file paths to .ngmesh files (format described above)
+        output_path:
+            Where to write the combined .ngmesh file
+    """
+    all_verts = []
+    all_faces = []
+    
+    num_verts = 0
+    for path in paths:
+        with open(path, 'rb') as f:
+            verts, faces = read_ngmesh(f, True)
+
+        faces += num_verts
+        num_verts += len(verts)
+        
+        all_verts.append(verts)
+        all_faces.append(faces)
+
+    final_verts = np.concatenate(all_verts)
+    final_faces = np.concatenate(all_faces)
+    
+    write_ngmesh(final_verts, final_faces, output_path)
