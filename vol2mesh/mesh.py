@@ -30,6 +30,8 @@ class Mesh:
     """
     A class to hold the elements of a mesh.
     """
+    MESH_FORMATS = ('obj', 'drc', 'ngmesh')
+    
     def __init__(self, vertices_zyx, faces, normals_zyx=None, box=None, pickle_compression_method='lz4'):
         """
         Args:
@@ -136,8 +138,7 @@ class Mesh:
         Read all mesh files (either .drc or .obj) from a
         directory and concatenate them into one big mesh.
         """
-        exts = ['.drc', '.obj', '.ngmesh']
-        mesh_paths = chain(*[glob.glob(f'{path}/*{ext}') for ext in exts])
+        mesh_paths = chain(*[glob.glob(f'{path}/*.{ext}') for ext in cls.MESH_FORMATS])
         mesh_paths = sorted(mesh_paths)
         meshes = map(Mesh.from_file, mesh_paths)
         return concatenate_meshes(meshes, keep_normals)
@@ -184,12 +185,13 @@ class Mesh:
 
         meshes = {}
         for member in members:
-            ext = member.name[-4:]
-            # Skip non-mesh files and empty files
-            if ext in ('.drc', '.obj', '.ngmesh') and member.size > 0:
+            ext = os.path.splitext(member.name)[1][1:]
+            
+            # Skip non-mesh files and empty files            
+            if ext in cls.MESH_FORMATS and member.size > 0:
                 buf = tf.extractfile(member).read()
                 try:
-                    mesh = Mesh.from_buffer(buf, ext[1:])
+                    mesh = Mesh.from_buffer(buf, ext)
                 except:
                     logger.error(f"Could not decode {member.name} ({member.size} bytes). Skipping!")
                     continue
@@ -214,7 +216,7 @@ class Mesh:
             fmt:
                 Either 'obj' or 'drc'.
         """
-        assert fmt in ('obj', 'drc', 'ngmesh')
+        assert fmt in cls.MESH_FORMATS
         if len(serialized_bytes) == 0:
             return Mesh(np.zeros((0,3), np.float32), np.zeros((0,3), np.uint32))
 
@@ -245,7 +247,7 @@ class Mesh:
         """
         Alternate constructor.
         Run marching cubes on the given volume and return a Mesh object.
-    
+        
         Args:
             downsampled_volume_zyx:
                 A binary volume, possibly at a downsampled resolution.
@@ -845,7 +847,7 @@ class Mesh:
         elif fmt is None:
             fmt = 'obj'
             
-        assert fmt in ('obj', 'drc', 'ngmesh'), f"Unknown format: {fmt}"
+        assert fmt in self.MESH_FORMATS, f"Unknown format: {fmt}"
 
         # Shortcut for empty mesh
         # Returns an empty buffer regardless of output format        
