@@ -66,5 +66,7 @@ outputs:
 
 about:
   home: https://github.com/janelia-flyem/vol2mesh
-  license: Unknown
+  license: BSD-3-Clause
+  license_family: BSD
+  license_file: LICENSE.txt
   summary: Tools for converting image volumes to meshes
