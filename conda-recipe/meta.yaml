@@ -1,65 +1,69 @@
-package:
-    name: vol2mesh
+#
+# Automatically determine the version from the last git tag.
+#
+{% if GIT_DESCRIBE_NUMBER|int == 0 %}
+  {% set version = GIT_DESCRIBE_TAG %}
+{% else %}
+  # If we're using a non-tagged revision, append '.postN' to the version
+  {% set version = GIT_DESCRIBE_TAG + '.post' + GIT_DESCRIBE_NUMBER %}
+{% endif %}
 
-  # Automatically determine the version from the last git tag
-  {% if GIT_DESCRIBE_NUMBER|int == 0 %}
-    version: "{{GIT_DESCRIBE_TAG}}"
-  {% else %}
-    # If we're using a non-tagged revision, append '.postN' to the version
-    version: "{{GIT_DESCRIBE_TAG}}.post{{GIT_DESCRIBE_NUMBER}}"
-  {% endif %}
+package:
+  name: vol2mesh
+  version: "{{ version }}"
 
 source:
   path: ..
 
 build:
   number: 0
-  string: {{PKG_BUILDNUM}}_py{{CONDA_PY}}_g{{GIT_FULL_HASH[:7]}}
-  script: python setup.py install --single-version-externally-managed --record record.txt
+  string: "{{ PKG_BUILDNUM }}_py{{ CONDA_PY }}_g{{ GIT_FULL_HASH[:7] }}"
   noarch: python
-  
-requirements:
-  build:
-    - python {{ python }}
-    - setuptools
 
-  run:
-    - python {{ python }}
-    - numpy
-    - lz4 >=2,<3
+outputs:
+  # The base package has fewer dependencies,
+  # but lacks some functionality:
+  #  - the scikit-image marching cubes implementation
+  #  - numba acceleration for normals calculation
+  #  - laplacian smoothing on an existing mesh
+  #  - stitching multiple meshes together into a water-tight whole
+  - name: vol2mesh-base
+    script: build_base.sh
+    requirements:
+      build:
+        - python {{ python }}
+        - setuptools
+      run:
+        - python {{ python }}
+        - numpy
+        - lz4 >=2,<3
 
-    # See README for details about these dependencies
-    - marching_cubes >=0.2
-    - fq-mesh-simplification
-    - dvidutils >=0.0.post81
+        # See README for details about these dependencies
+        - marching_cubes >=0.2
+        - fq-mesh-simplification
+        - dvidutils >=0.0.post81
 
-    # Optional dependency, for alternative marching-cubes implementation.
-    #- scikit-image >=0.13
+    test:
+      imports:
+        - vol2mesh
 
-    # numba is an optional dependency
-    #- numba
+  - name: vol2mesh
+    requirements:
+      run:
+        - vol2mesh-base {{ version }}
+        - scikit-image >=0.13
+        - numba
+        - pandas
 
-    # pandas is a semi-optional dependency.
-    # Required for the following methods:
-    #   * Mesh.laplacian_smooth()
-    #   * Mesh.stitch_adjacent_faces()
-    #
-    #- pandas
+    test:
+      imports:
+        - vol2mesh
+      requires:
+        - pytest
+        - scipy
+      commands:
+        - pytest -s --tb=native --pyargs vol2mesh.tests
 
-test:
-  imports:
-    - vol2mesh
-
-  requires:
-    - pytest
-    - pandas
-    - scipy
-    - scikit-image
-    - numba
-    
-  commands:
-    - pytest -s --tb=native --pyargs vol2mesh.tests
-    
 about:
   home: https://github.com/janelia-flyem/vol2mesh
   license: Unknown
