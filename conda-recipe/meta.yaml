@@ -29,7 +29,7 @@ requirements:
     - lz4 >=2,<3
 
     # See README for details about these dependencies
-    - marching_cubes
+    - marching_cubes >=0.2
     - fq-mesh-simplification
     - dvidutils >=0.0.post81
 
