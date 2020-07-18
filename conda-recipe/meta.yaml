@@ -29,6 +29,8 @@ outputs:
   #  - stitching multiple meshes together into a water-tight whole
   - name: vol2mesh-base
     script: build_base.sh
+    build:
+      noarch: python
     requirements:
       build:
         - python {{ python }}
@@ -48,6 +50,8 @@ outputs:
         - vol2mesh
 
   - name: vol2mesh
+    build:
+      noarch: python
     requirements:
       run:
         - vol2mesh-base {{ version }}
