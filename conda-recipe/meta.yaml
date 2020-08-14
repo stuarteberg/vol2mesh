@@ -38,7 +38,7 @@ outputs:
       run:
         - python {{ python }}
         - numpy
-        - lz4 >=2,<3
+        - lz4 >=2,<4
 
         # See README for details about these dependencies
         - marching_cubes >=0.2
