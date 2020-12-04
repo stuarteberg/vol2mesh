@@ -285,7 +285,7 @@ class Mesh:
 
         try:
             if method == 'skimage':
-                from skimage.measure import marching_cubes_lewiner
+                from skimage.measure import marching_cubes
                 padding = np.array([0,0,0])
                 
                 # Tiny volumes trigger a corner case in skimage, so we pad them with zeros.
@@ -298,7 +298,7 @@ class Mesh:
 
                 kws = {'step_size': 1}
                 kws.update(kwargs)
-                vertices_zyx, faces, normals_zyx, _values = marching_cubes_lewiner(downsampled_volume_zyx, 0.5, **kws)
+                vertices_zyx, faces, normals_zyx, _values = marching_cubes(downsampled_volume_zyx, 0.5, **kws)
                 
                 # Skimage assumes that the coordinate origin is CENTERED inside pixel (0,0,0),
                 # whereas we assume that the origin is the UPPER-LEFT corner of pixel (0,0,0).
