@@ -1,6 +1,7 @@
 import unittest
 import threading
 import subprocess
+from io import BytesIO
 from vol2mesh.io_utils import TemporaryNamedPipe
  
 class TestTemporaryNamedPipe(unittest.TestCase):
@@ -24,6 +25,15 @@ class TestTemporaryNamedPipe(unittest.TestCase):
         # The first cut of TemporaryNamedPipe.Stream() failed this test.
         text = pipe.open_stream('r').read()
         assert text == "Hello"
+
+    def test_copy_stream(self):
+        pipe = TemporaryNamedPipe()
+        s = BytesIO(b'Hello')
+        th = pipe.start_writing_stream(s)
+        cat_output = subprocess.check_output(f'cat {pipe.path}', shell=True)
+        assert cat_output == b"Hello"
+        assert cat_output == b'Hello'
+        th.join()
 
 if __name__ == "__main__":
     unittest.main()

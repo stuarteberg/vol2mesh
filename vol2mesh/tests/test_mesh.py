@@ -197,20 +197,34 @@ def test_empty_mesh():
     What happens when we call functions on an empty mesh?
     """
     mesh = Mesh( np.zeros((0,3), np.float32), np.zeros((0,3), int) )
+
     mesh.simplify(1.0)
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
     mesh.simplify(0.1)
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
+    mesh.simplify_openmesh(1.0)
+    assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
+    mesh.simplify_openmesh(0.1)
+    assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
     mesh.laplacian_smooth(0)
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
     mesh.laplacian_smooth(2)
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
     mesh.stitch_adjacent_faces()
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
     mesh.serialize(fmt='obj')
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
     mesh.serialize(fmt='drc')
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
+
     mesh.compress()
     concatenate_meshes((mesh, mesh))
     assert len(mesh.vertices_zyx) == len(mesh.normals_zyx) == len(mesh.faces) == 0
@@ -282,6 +296,11 @@ def test_smoothing_X(binary_vol_input):
     mesh = Mesh.from_binary_vol( binary_vol, data_box )
     mesh.laplacian_smooth(5)
     mesh.simplify(0.2)
+    #mesh.serialize('/tmp/x-smoothed-simplified.obj')
+
+    mesh = Mesh.from_binary_vol( binary_vol, data_box )
+    mesh.laplacian_smooth(5)
+    mesh.simplify_openmesh(0.2)
     #mesh.serialize('/tmp/x-smoothed-simplified.obj')
 
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import logging
 import tarfile
@@ -21,7 +22,7 @@ from .util import first_occurrences
 from .normals import compute_face_normals, compute_vertex_normals
 from .obj_utils import write_obj, read_obj
 from .ngmesh import read_ngmesh, write_ngmesh
-from .io_utils import TemporaryNamedPipe, AutoDeleteDir
+from .io_utils import TemporaryNamedPipe, AutoDeleteDir, stdout_redirected
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class Mesh:
     def __init__(self, vertices_zyx, faces, normals_zyx=None, box=None, pickle_compression_method='lz4'):
         """
         Args:
-            vertices_zyx: ndarray (N,3), float
+            vertices_zyx: ndarray (N,3), float32
             
             faces: ndarray (M,3), integer
                 Each element is an index referring to an element of vertices_zyx
@@ -830,6 +831,49 @@ class Mesh:
                 # The fq-mesh-simplify tool does not compute normals.
                 vertices_xyz, self.faces, _empty_normals = read_obj(decimated_stream)
                 self.vertices_zyx = vertices_xyz[:,::-1]
+
+        # Force normal reomputation to eliminate possible degenerate faces
+        # (Can decimation produce degenerate faces?)
+        self.recompute_normals(True)
+
+
+    def simplify_openmesh(self, fraction):
+        """
+        Simplify this mesh in-place, by the given fraction (of the original vertex count).
+        Uses OpenMesh to perform the decimation.
+        This has similar performance to our default simplify() method,
+        but does not require a subprocess or conversion to OBJ.
+        Therefore, it can be faster in cases where I/O is the major bottleneck,
+        rather than the decimation procedure itself.
+        (For example, when lightly decimating a large mesh, I/O is the bottleneck.)
+        """
+        if len(self.vertices_zyx) == 0:
+            return
+
+        target = max(4, int(fraction * len(self.vertices_zyx)))
+        if fraction is None or fraction == 1.0:
+            if len(self.normals_zyx) == 0:
+                self.recompute_normals(True)
+            return
+
+        import openmesh as om
+
+        # Mesh construction in OpenMesh produces a lot of noise on stderr.
+        # Send it to /dev/null
+        with stdout_redirected(stdout=sys.stderr):
+            m = om.TriMesh(self.vertices_zyx[:, ::-1], self.faces)
+
+        h = om.TriMeshModQuadricHandle()
+        d = om.TriMeshDecimater(m)
+        d.add(h)
+        d.module(h).unset_max_err()
+        d.initialize()
+
+        d.decimate_to(target)
+        m.garbage_collection()
+
+        self.vertices_zyx = m.points()[:, ::-1].astype(np.float32)
+        self.faces = m.face_vertex_indices().astype(np.uint32)
 
         # Force normal reomputation to eliminate possible degenerate faces
         # (Can decimation produce degenerate faces?)

@@ -58,6 +58,7 @@ outputs:
         - scikit-image >=0.13
         - numba
         - pandas
+        - openmesh-python
 
     test:
       imports:
