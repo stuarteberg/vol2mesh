@@ -21,7 +21,8 @@ class AutoDeleteDir:
 
     def __str__(self):
         return self.dirpath
-    
+
+
 class TemporaryNamedPipe:
     """
     Represents a unix 'named pipe', a.k.a. fifo
@@ -34,7 +35,7 @@ class TemporaryNamedPipe:
                 with pipe.open_stream('r') as f:
                     f.write("Hello")
             threading.Thread(target=write_hello).start()
-            
+
             subprocess.call(f'cat {pipe.path}')
     """
     def __init__(self, basename='temporary-pipe.bin'):
@@ -42,11 +43,11 @@ class TemporaryNamedPipe:
         assert '/' not in basename
         self.tmpdir = tempfile.mkdtemp()
         self.path = f"{self.tmpdir}/{basename}"
-    
+
         os.mkfifo(self.path)
         self.state = 'pipe_exists'
         self.writer_thread = None
-    
+
     def cleanup(self):
         if self.path:
             os.unlink(self.path)
@@ -55,24 +56,27 @@ class TemporaryNamedPipe:
 
     def __del__(self):
         self.cleanup()
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *args):
         self.cleanup()
 
     def start_writing_stream(self, stream):
+        e = threading.Event()
         def write_input():
             with open(self.path, 'wb') as f:
+                e.set()
                 copyfileobj(stream, f)
         self.writer_thread = threading.Thread(target=write_input)
         self.writer_thread.start()
+        e.wait()
         return self.writer_thread
 
     def open_stream(self, mode):
         return TemporaryNamedPipe.Stream(mode, self)
-    
+
     class Stream:
         """
         An open stream to a parent TemporaryNamedPipe.
@@ -88,15 +92,15 @@ class TemporaryNamedPipe:
         def close(self):
             if self._parent_pipe:
                 self._file.close()
-                self._parent_pipe = None # Release parent pipe
+                self._parent_pipe = None  # Release parent pipe
                 self.closed = True
 
         def __del__(self):
             self.close()
-            
+
         def __enter__(self):
             return self
-        
+
         def __exit__(self, *args):
             self.close()
 

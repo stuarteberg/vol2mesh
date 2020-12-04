@@ -121,9 +121,9 @@ def read_obj(mesh_bytestream):
                 listed_normals_xyz_flat.extend(map(float, line.split()[1:]))
     
         if len(vertices_xyz_flat) % 3:
-            raise RuntimeError("Unexpected format: total vertex count is not divisible by 3!")
+            raise RuntimeError("Unexpected format: total vertex coord count is not divisible by 3!")
         if len(faces_flat) % 3:
-            raise RuntimeError("Unexpected format: face vertex count is not divisible by 3!")
+            raise RuntimeError("Unexpected format: face index count is not divisible by 3!")
         if len(listed_normals_xyz_flat) % 3:
             raise RuntimeError("Unexpected format: normal components count is not divisible by 3!")
     

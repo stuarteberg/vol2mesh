@@ -793,7 +793,7 @@ class Mesh:
         if fraction is None or fraction == 1.0 or (len(self.faces) * fraction <= 4):
             if self.normals_zyx.shape[0] == 0:
                 self.recompute_normals(True)
-            return self
+            return
 
         if in_memory:
             obj_bytes = write_obj(self.vertices_zyx[:,::-1], self.faces)

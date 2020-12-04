@@ -375,7 +375,6 @@ def test_normals_implementations(binary_vol_input):
     assert np.allclose(vertex_normals_numba, vertex_normals_default)
     assert np.allclose(vertex_normals_numba, vertex_normals_numpy)
 
-    compute_vertex_normals
 
 def test_normals_guarantees(binary_vol_input):
     """
