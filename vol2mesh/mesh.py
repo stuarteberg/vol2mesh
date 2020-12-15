@@ -860,8 +860,16 @@ class Mesh:
 
         # Mesh construction in OpenMesh produces a lot of noise on stderr.
         # Send it to /dev/null
-        with stdout_redirected(stdout=sys.stderr):
+        try:
+            sys.stderr.fileno()
+        except:
+            # Can't redirect stderr if it has no file descriptor.
+            # Just let the output spill to wherever it's going.
             m = om.TriMesh(self.vertices_zyx[:, ::-1], self.faces)
+        else:
+            # Hide stderr, since OpenMesh construction is super noisy.
+            with stdout_redirected(stdout=sys.stderr):
+                m = om.TriMesh(self.vertices_zyx[:, ::-1], self.faces)
 
         h = om.TriMeshModQuadricHandle()
         d = om.TriMeshDecimater(m)
@@ -869,7 +877,9 @@ class Mesh:
         d.module(h).unset_max_err()
         d.initialize()
 
-        d.decimate_to(target)
+        logger.debug(f"Attempting to decimate to {target} (Reduce by {len(self.vertices_zyx) - target})")
+        eliminated_count = d.decimate_to(target)
+        logger.debug(f"Reduced by {eliminated_count}")
         m.garbage_collection()
 
         self.vertices_zyx = m.points()[:, ::-1].astype(np.float32)
