@@ -28,7 +28,7 @@ outputs:
   #  - laplacian smoothing on an existing mesh
   #  - stitching multiple meshes together into a water-tight whole
   - name: vol2mesh-base
-    script: {{ PYTHON }} -m pip install . -vv
+    script: build_base.sh
     build:
       noarch: python
     requirements:
