@@ -55,7 +55,7 @@ outputs:
       noarch: python
     requirements:
       run:
-        - {{ pin_subpackage('vol2mesh-base', max_pin="x.x.x.x") }}
+        - {{ pin_subpackage('vol2mesh-base', exact=True) }}
         - scikit-image >=0.13
         - numba
         - pandas
