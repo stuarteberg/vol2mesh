@@ -156,3 +156,20 @@ def box_to_slicing(start, stop):
         >>> assert bb_to_slicing([1,2,3], [4,5,6]) == np.s_[1:4, 2:5, 3:6]
     """
     return tuple( starmap( slice, zip(start, stop) ) )
+
+
+def has_nonzero_edges(vol):
+    """
+    Return True if any of the voxels on the edge of the volume are non-zero.
+    """
+    nz = (
+        vol[:, :, 0].any() or
+        vol[:, :, -1].any() or
+
+        vol[:, 0, :].any() or
+        vol[:, -1, :].any() or
+
+        vol[0, :, :].any() or
+        vol[-1, :, :].any()
+    )
+    return nz

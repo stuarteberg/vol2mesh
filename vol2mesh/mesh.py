@@ -10,7 +10,7 @@ from itertools import chain
 
 import numpy as np
 import lz4.frame
-from vol2mesh.util import compute_nonzero_box, extract_subvol
+from vol2mesh.util import compute_nonzero_box, extract_subvol, has_nonzero_edges
 
 try:
     from dvidutils import LabelMapper, encode_faces_to_drc_bytes, decode_drc_bytes_to_faces
@@ -351,39 +351,52 @@ class Mesh:
 
 
     @classmethod
-    def from_label_volume(cls, downsampled_volume_zyx, fullres_box_zyx=None, labels=None, method='ilastik', progress=True, **kwargs):
+    def from_label_volume(cls, downsampled_volume_zyx, fullres_box_zyx=None, labels=None, ensure_halo=True, method='ilastik', progress=True, **kwargs):
         """
         Generate a mesh for multiple labels in a segmentation volume.
         Calls ``Mesh.from_binary_volume()`` for each object.
-        
+
         Args:
             downsampled_volume_zyx:
                 A label (segmentation) volume, possibly at a downsampled resolution.
             fullres_box_zyx:
                 The bounding-box inhabited by the given volume, in FULL-res coordinates.
-            method:
-                Which library to use for marching_cubes. Choices are:
-                - "ilastik" -- Use github.com/ilastik/marching_cubes
-                - "skimage" -- Use scikit-image marching_cubes_lewiner
-                  (Not a required dependency.  Install ``scikit-image`` to use this method.)
             labels:
                 If given only compute meshes for the given labels in the volume.
                 If any of the given labels cannot be found in the volume,
                 ``None`` is returned in place of mesh object for that label.
                 If no labels are provided, all non-zero labels are processed.
+            ensure_halo:
+                Ensure that the volume has an empty slice of voxels on all sides.
+                Otherwise, meshes which border the volume may have 'holes' at the volume edge.
+            method:
+                Which library to use for marching_cubes. Choices are:
+                - "ilastik" -- Use github.com/ilastik/marching_cubes
+                - "skimage" -- Use scikit-image marching_cubes_lewiner
+                  (Not a required dependency.  Install ``scikit-image`` to use this method.)
+            progress:
+                Show a progress bar if tqdm is installed.
             kwargs:
                 Any extra arguments to the particular marching cubes implementation.
                 The 'ilastik' method supports initial smoothing via a ``smoothing_rounds`` parameter.
 
         Returns:
             dict of ``{label: Mesh}``
-        
-        Note:
-            No surface is added for the volume boundaries, so objects which
-            touch the edge of the volume will be "open" at the edge.
-            If you want to see an edge there, pad your volume with a 1-px
-            halo on all sides (and adjust fullres_box_zyx accordingly).
         """
+        if fullres_box_zyx is None:
+            fullres_box_zyx = np.array([[0,0,0], downsampled_volume_zyx.shape])
+        fullres_shape = fullres_box_zyx[1] - fullres_box_zyx[0]
+        resolution = fullres_shape // downsampled_volume_zyx.shape
+
+        # The fullres start/end do not need to be even multiples of the resolution,
+        # but the *width* of each dimension must divide cleanly.
+        assert not (fullres_shape % downsampled_volume_zyx.shape).any(), \
+            "Mask volume dimensions must divide cleanly into full-res dimensions."
+
+        if ensure_halo and has_nonzero_edges(downsampled_volume_zyx):
+            downsampled_volume_zyx = np.pad(downsampled_volume_zyx, 1)
+            fullres_box_zyx += resolution * np.array([[-1, -1, -1], [1, 1, 1]])
+
         if labels is None:
             # Which labels are present?
             # (Use pandas if available, since it's faster.)
@@ -392,7 +405,7 @@ class Mesh:
                 labels = pd.unique(downsampled_volume_zyx.reshape(-1))
             except ImportError:
                 labels = np.unique(downsampled_volume_zyx)
-                
+
             labels = sorted({*labels} - {0})
 
         if progress:
@@ -405,29 +418,25 @@ class Mesh:
         meshes = {}
         for label in labels:
             mask = (downsampled_volume_zyx == label)
-            
+
             # Save time by extracting the smallest
             # bounding box possible for the object.
             subvol_box = compute_nonzero_box(mask)
             if not subvol_box.any():
                 meshes[label] = None
                 continue
-            
+
             subvol_box[0] = np.maximum(0, subvol_box[0] - 1)
             subvol_box[1] = np.minimum(mask.shape, subvol_box[1] + 1)
-            
-            subvol_mask = extract_subvol(mask, subvol_box)
 
-            fullres_subvol_box = None
-            if fullres_box_zyx is None:
-                fullres_subvol_box = subvol_box
-            else:
-                fullres_shape = fullres_box_zyx[1] - fullres_box_zyx[0]
-                resolution = fullres_shape // mask.shape
-                fullres_subvol_box = subvol_box * resolution
-            
-            meshes[label] = cls.from_binary_vol(subvol_mask, fullres_subvol_box, method, **kwargs)
-        
+            subvol_mask = extract_subvol(mask, subvol_box)
+            mesh = cls.from_binary_vol(subvol_mask, subvol_box, method, **kwargs)
+
+            # Upscale and translate the mesh into place
+            mesh.vertices_zyx[:] *= resolution
+            mesh.vertices_zyx[:] += fullres_box_zyx[0]
+            meshes[label] = mesh
+
         return meshes
 
 
