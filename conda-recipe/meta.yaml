@@ -58,7 +58,6 @@ outputs:
         - {{ pin_subpackage('vol2mesh-base', exact=True) }}
         - scikit-image >=0.13
         - numba
-        - pandas
         - openmesh-python
 
     test:

@@ -44,7 +44,7 @@ def compute_vertex_normals(vertices_zyx, faces, weight_by_face_area=False, face_
     Returns: Numpy array (N,3)
     """
     if face_normals is None:
-        face_normals = compute_face_normals_numpy(vertices_zyx, faces, not weight_by_face_area)
+        face_normals = compute_face_normals_numpy_chunked(vertices_zyx, faces, not weight_by_face_area)
 
     # numba is slightly faster for vertex normals, but not face normals
     if _numba_available:
@@ -70,41 +70,69 @@ def compute_face_normals(vertices_zyx, faces, normalize=False):
     """
     # numpy is faster than numba for face normals.
     # Always use numpy.
-    return compute_face_normals_numpy(vertices_zyx, faces, normalize)
+    return compute_face_normals_numpy_chunked(vertices_zyx, faces, normalize)
 
 
 def compute_face_normals_numpy(vertices_zyx, faces, normalize=False):
-    corners_0 = vertices_zyx[faces[:,0]]
-    corners_1 = vertices_zyx[faces[:,1]]
-    corners_2 = vertices_zyx[faces[:,2]]
+    """
+    Warning: This function uses a huge amount of RAM.
+             (Note that faces is usually 2x larger than vertices)
+    """
+    # This array is 3x more RAM than faces, thus 6x more than vertices.
+    # (face_index, corner_index, v_component) -> (F, 3, 3)
+    corners = vertices_zyx[faces]
 
-    v1 = corners_1 - corners_0
-    v2 = corners_2 - corners_1
+    # (corner_index, face_index, v_component) -> (3, F, 3)
+    corners = corners.transpose(1, 0, 2)
+    v1, v2 = np.diff(corners, axis=0)
 
-    v_normal = np.cross(v2, v1) # This ordering is required for correct sign,
-                                # since the handedness of the coordinate system is different for zyx vs xyz
-    
+    # This ordering is required for correct sign,
+    # since the handedness of the coordinate system is different for zyx vs xyz
+    v_normal = np.cross(v2, v1)
+
     if normalize:
         magnitudes = np.linalg.norm(v_normal, axis=-1)
-        v_normal[magnitudes != 0, :] /= magnitudes[magnitudes != 0, None]
-        
+        nz = (magnitudes != 0)
+        v_normal[nz, :] /= magnitudes[nz, None]
+
     assert v_normal.shape == faces.shape
     return v_normal
+
+
+def compute_face_normals_numpy_chunked(vertices_zyx, faces, normalize=False, chunksize=50_000):
+    """
+    Same as compute_face_normals_numpy(), but internally computes the result in chunks to save RAM.
+    """
+    normals = []
+    for i in range(0, len(faces), chunksize):
+        n = compute_face_normals_numpy(vertices_zyx, faces[i:i+chunksize], normalize)
+        normals.append(n)
+    return np.concatenate(normals)
 
 
 def compute_vertex_normals_numpy(vertices_zyx, faces, weight_by_face_area=False, face_normals=None):
     if face_normals is None:
         face_normals = compute_face_normals_numpy(vertices_zyx, faces, not weight_by_face_area)
 
-    vertex_normals = np.zeros(vertices_zyx.shape, np.float32)
-
     # Each vertex normal is the average of the normals from its N adjacent faces.
     # But an easier way to write this is to realize that each face normal contributes
     # to exactly three vertex normals.  So just sum up each face's contributions
     # to its neighboring vertex normals.
+    vertex_normals = np.zeros(vertices_zyx.shape, np.float32)
     np.add.at(vertex_normals, faces[:, 0], face_normals)
     np.add.at(vertex_normals, faces[:, 1], face_normals)
     np.add.at(vertex_normals, faces[:, 2], face_normals)
+
+    ## Here's a 'clever' version of the above, condensed to a single np.add.at()
+    ## This might be (barely) faster than the above, but no one will ever understand it...
+    #
+    #   from numpy.lib.stride_tricks import as_strided
+    #   vn = np.zeros((len(vertices_zyx), 3, 3), np.float32).transpose(1, 0, 2)
+    #   fn = face_normals
+    #   s0, s1 = fn.strides
+    #   fn_view = as_strided(fn, (len(fn), 3, 3), (s0, 0, s1))
+    #   np.add.at(vn, ([0, 1, 2], faces), fn_view)
+    #   vertex_normals = vn.sum(axis=0)
 
     magnitudes = np.linalg.norm(vertex_normals, axis=-1)
     nonzero_mags = magnitudes != 0
