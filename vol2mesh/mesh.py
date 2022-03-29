@@ -679,15 +679,24 @@ class Mesh:
         Works in-place.
 
         Note: Normals are recomputed iff they were present originally.
+
+        Returns:
+            True if any vertices were dropped (due to stitching),
+            or False otherwise (no stitching needed).
         """
         # If we sort the vertices, finding duplicates is easy with np.diff
         self.sort_vertices()
         v = self.vertices_zyx
         non_dup = np.diff(v, axis=0, prepend=(v[:1] + 1)).any(axis=1)
 
+        # Drop vertices that were never referenced in the first place
+        reference_flags = np.zeros_like(non_dup)
+        reference_flags[self.faces.ravel()] = True
+        non_dup &= reference_flags
+
         if non_dup.all():
             self.drop_duplicate_faces()
-            return
+            return False
 
         # Drop duplicate vertices
         self.vertices_zyx = self.vertices_zyx[non_dup]
@@ -708,6 +717,8 @@ class Mesh:
         if len(self.normals_zyx) > 0:
             self.recompute_normals(True)
 
+        return True
+
     def drop_duplicate_faces(self):
         # Normalize face vertex order before checking for duplicates.
         # Technically, this means we don't distinguish
@@ -727,6 +738,10 @@ class Mesh:
             If True, faces with no area (i.e. just lines) will be removed.
             (They have no effect on the vertex normals either way.)
         """
+        if len(self.vertices_zyx) == 0:
+            self._normals_zyx = np.zeros((0,3), dtype=np.int32)
+            return
+
         face_normals = compute_face_normals(self.vertices_zyx, self.faces)
 
         if remove_degenerate_faces:
