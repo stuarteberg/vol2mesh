@@ -761,13 +761,28 @@ class Mesh:
             self.normals_zyx = np.zeros((0,3), np.float32)
         else:
             self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces, face_normals=face_normals)
-        
 
-    def simplify(self, fraction, in_memory=False, timeout=None):
+
+    def simplify(self, fraction, in_memory=False, timeout=None, hide_logging=True):
         """
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
-        
-        Note: timeout only applies to the NON-in-memory case.
+
+        Args:
+            fraction:
+                Reduce the overall vertex count so that only a fraction of
+                them remain, as specified by this argument.
+            in_memory:
+                Interact with the decimation subprocess via a pipe, rather than a file
+                At the time of this writing, this feature no longer works.
+            timeout:
+                Raise a TimeoutError if the decimation routine takes
+                longer than the given number of seconds.
+                By default, no timeout is enforced (it can hang forever).
+            hide_logging:
+                The subprocess which performs the decimation is quite noisy.
+                We hide its output by default, but you can see it with this argument.
+        Returns:
+            None. This method operates on the mesh in-place.
         """
         # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).
         # We have to check for this in advance because we can't gracefully handle the error.
@@ -777,24 +792,26 @@ class Mesh:
                 self.recompute_normals(True)
             return
 
+        stdout = subprocess.DEVNULL if hide_logging else None
+
         if in_memory:
             obj_bytes = write_obj(self.vertices_zyx[:,::-1], self.faces)
             bytes_stream = BytesIO(obj_bytes)
-    
+
             simplify_input_pipe = TemporaryNamedPipe('input.obj')
             simplify_input_pipe.start_writing_stream(bytes_stream)
-        
+
             simplify_output_pipe = TemporaryNamedPipe('output.obj')
-        
+
             cmd = f'fq-mesh-simplify {simplify_input_pipe.path} {simplify_output_pipe.path} {fraction}'
-            proc = subprocess.Popen(cmd, shell=True)
+            proc = subprocess.Popen(cmd, shell=True, stdout=stdout)
             mesh_stream = simplify_output_pipe.open_stream('rb')
-            
+
             # The fq-mesh-simplify tool does not compute normals.
             vertices_xyz, self.faces, _empty_normals = read_obj(mesh_stream)
             self.vertices_zyx = vertices_xyz[:,::-1]
             mesh_stream.close()
-    
+
             proc.wait(timeout=1.0)
             if proc.returncode != 0:
                 msg = f"Child process returned an error code: {proc.returncode}.\n"\
@@ -807,7 +824,7 @@ class Mesh:
             decimated_path = f'{obj_dir}/decimated.obj'
             write_obj(self.vertices_zyx[:,::-1], self.faces, output_file=undecimated_path)
             cmd = f'fq-mesh-simplify {undecimated_path} {decimated_path} {fraction}'
-            subprocess.check_call(cmd, shell=True, timeout=timeout)
+            subprocess.check_call(cmd, shell=True, timeout=timeout, stdout=stdout)
             with open(decimated_path, 'rb') as decimated_stream:
                 # The fq-mesh-simplify tool does not compute normals.
                 vertices_xyz, self.faces, _empty_normals = read_obj(decimated_stream)
@@ -871,7 +888,7 @@ class Mesh:
         self.recompute_normals(True)
 
 
-    def laplacian_smooth(self, iterations=1):
+    def laplacian_smooth(self, iterations=1, constrain_exterior=None):
         """
         Smooth the mesh in-place.
 
@@ -901,6 +918,12 @@ class Mesh:
                 self.recompute_normals(True)
             return
 
+        if constrain_exterior is True:
+            constrain_exterior = self.box
+        if constrain_exterior is not None:
+            constrain_exterior = np.asarray(constrain_exterior)
+            assert constrain_exterior.shape == (2,3)
+
         # Always discard old normals
         self.normals_zyx = np.zeros((0,3), np.float32)
 
@@ -917,6 +940,10 @@ class Mesh:
 
         # How many neighbors for each vertex == how many times it is mentioned in the edge list
         neighbor_counts = np.bincount(edges.ravel(), minlength=len(self.vertices_zyx))
+
+        if constrain_exterior is not None:
+            frozen_coords = (self.vertices_zyx <= constrain_exterior[0])
+            frozen_coords |= (self.vertices_zyx >= constrain_exterior[1]-1)
 
         new_vertices_zyx = np.empty_like(self.vertices_zyx)
         for _ in range(iterations):
@@ -939,6 +966,9 @@ class Mesh:
 
             # Here, '+1' because each point itself is included in the sum
             new_vertices_zyx[:] /= (neighbor_counts[:, None] + 1)
+
+            if constrain_exterior is not None:
+                new_vertices_zyx[frozen_coords] = self.vertices_zyx[frozen_coords]
 
             # Swap (save RAM allocation overhead by reusing the new_vertices_zyx array between iterations)
             self.vertices_zyx, new_vertices_zyx = new_vertices_zyx, self.vertices_zyx
