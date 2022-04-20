@@ -248,7 +248,7 @@ class Mesh:
         """
         Alternate constructor.
         Run marching cubes on the given volume and return a Mesh object.
-        
+
         Args:
             downsampled_volume_zyx:
                 A binary volume, possibly at a downsampled resolution.
@@ -264,7 +264,7 @@ class Mesh:
             kwargs:
                 Any extra arguments to the particular marching cubes implementation.
                 The 'ilastik' method supports initial smoothing via a ``smoothing_rounds`` parameter.
-        
+
         Returns:
             Mesh
 
@@ -275,24 +275,32 @@ class Mesh:
             halo on all sides (and adjust fullres_box_zyx accordingly).
         """
         assert downsampled_volume_zyx.ndim == 3
-        
+
         if fullres_box_zyx is None:
             fullres_box_zyx = np.array([(0,0,0), downsampled_volume_zyx.shape])
         else:
             fullres_box_zyx = np.asarray(fullres_box_zyx)
-        
+
         # Infer the resolution of the downsampled volume
         resolution = (fullres_box_zyx[1] - fullres_box_zyx[0]) // downsampled_volume_zyx.shape
 
         if ensure_halo and has_nonzero_edges(downsampled_volume_zyx):
             downsampled_volume_zyx = np.pad(downsampled_volume_zyx, 1)
             fullres_box_zyx += resolution * np.array([[-1, -1, -1], [1, 1, 1]])
+        elif downsampled_volume_zyx.all() or not downsampled_volume_zyx.any():
+            # Completely full (or empty) boxes are not meshable -- they would be
+            # open on all sides, leaving no vertices or faces.
+            # Just return an empty mesh.
+            empty_vertices = np.zeros((0, 3), dtype=np.float32)
+            empty_faces = np.zeros((0, 3), dtype=np.uint32)
+            return Mesh(empty_vertices, empty_faces, box=fullres_box_zyx)
 
         try:
+            assert method in ('skimage' 'ilastik'), f"Unknown method: {method}"
             if method == 'skimage':
                 from skimage.measure import marching_cubes
                 padding = np.array([0,0,0])
-                
+
                 # Tiny volumes trigger a corner case in skimage, so we pad them with zeros.
                 # This results in faces on all sides of the volume,
                 # but it's not clear what else to do.
@@ -304,7 +312,7 @@ class Mesh:
                 kws = {'step_size': 1}
                 kws.update(kwargs)
                 vertices_zyx, faces, normals_zyx, _values = marching_cubes(downsampled_volume_zyx, 0.5, **kws)
-                
+
                 # Skimage assumes that the coordinate origin is CENTERED inside pixel (0,0,0),
                 # whereas we assume that the origin is the UPPER-LEFT corner of pixel (0,0,0).
                 # Therefore, shift the results by a half-pixel.
@@ -330,28 +338,14 @@ class Mesh:
                     faces[:] = faces[:, ::-1]
 
                 vertices_zyx += 0.5
-                
-            else:
-                msg = f"Unknown method: {method}"
-                logger.error(msg)
-                raise RuntimeError(msg)
-        except ValueError:
-            if downsampled_volume_zyx.all() or not downsampled_volume_zyx.any():
-                # Completely full (or empty) boxes are not meshable -- they would be
-                # open on all sides, leaving no vertices or faces.
-                # Just return an empty mesh.
-                empty_vertices = np.zeros( (0, 3), dtype=np.float32 )
-                empty_faces = np.zeros( (0, 3), dtype=np.uint32 )
-                return Mesh(empty_vertices, empty_faces, box=fullres_box_zyx)
-            else:
-                logger.error("Error during mesh generation")
-                raise
-    
-        
+        except ValueError as ex:
+            logger.error(f"Error during mesh generation: {ex}")
+            raise
+
         # Upscale and translate the mesh into place
         vertices_zyx[:] *= resolution
         vertices_zyx[:] += fullres_box_zyx[0]
-        
+
         return Mesh(vertices_zyx, faces, normals_zyx, fullres_box_zyx)
 
 
