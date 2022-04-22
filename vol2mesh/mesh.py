@@ -882,7 +882,7 @@ class Mesh:
         self.recompute_normals(True)
 
 
-    def laplacian_smooth(self, iterations=1, constrain_exterior=None):
+    def laplacian_smooth(self, iterations=1, constrain_exterior=None, constraint_mode='fixed'):
         """
         Smooth the mesh in-place.
 
@@ -912,6 +912,7 @@ class Mesh:
                 self.recompute_normals(True)
             return
 
+        assert constraint_mode in ('planar', 'fixed')
         if constrain_exterior is True:
             constrain_exterior = self.box
         if constrain_exterior is not None:
@@ -938,6 +939,8 @@ class Mesh:
         if constrain_exterior is not None:
             frozen_coords = (self.vertices_zyx <= constrain_exterior[0])
             frozen_coords |= (self.vertices_zyx >= constrain_exterior[1]-1)
+            if constraint_mode == 'fixed':
+                frozen_coords = frozen_coords.any(axis=1)
 
         new_vertices_zyx = np.empty_like(self.vertices_zyx)
         for _ in range(iterations):
