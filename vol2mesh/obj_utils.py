@@ -1,6 +1,9 @@
+import re
 from io import BytesIO
 from pathlib import Path
 import numpy as np
+from numpy.lib.stride_tricks import as_strided
+import pandas as pd
 
 def write_obj(vertices_xyz, faces, normals_xyz=None, output_file=None):
     """
@@ -57,19 +60,21 @@ def _write_obj(vertices_xyz, faces, normals_xyz, mesh_bytestream):
 
     mesh_bytestream.write(b"# OBJ file\n")
 
-    for (x,y,z) in vertices_xyz:
-        mesh_bytestream.write(f"v {x:.7g} {y:.7g} {z:.7g}\n".encode('utf-8'))
+    # Tips for faster exports
+    # https://github.com/mikedh/trimesh/blob/main/trimesh/exchange/README.md
 
-    for (x,y,z) in normals_xyz:
-        mesh_bytestream.write(f"vn {x:.7g} {y:.7g} {z:.7g}\n".encode('utf-8'))
+    mesh_bytestream.write(("v {:.7g} {:.7g} {:.7g}\n" * len(vertices_xyz)).format(*vertices_xyz.ravel()).encode('utf-8'))
+    if len(normals_xyz) > 0:
+        mesh_bytestream.write(("vn {:.7g} {:.7g} {:.7g}\n" * len(normals_xyz)).format(*normals_xyz.ravel()).encode('utf-8'))
 
     # OBJ format: Faces start at index 1 (not 0)
-    for (v1, v2, v3) in faces+1:
-        if len(normals_xyz) > 0:
-            mesh_bytestream.write(f"f {v1}//{v1} {v2}//{v2} {v3}//{v3}\n".encode('utf-8'))
-        else:
-            mesh_bytestream.write(f"f {v1} {v2} {v3}\n".encode('utf-8'))
-    
+    faces = faces + 1
+    if len(normals_xyz) > 0:
+        faces = as_strided(faces, faces.shape + (2,), faces.strides + (0,), writeable=False)
+        mesh_bytestream.write(("f {}//{} {}//{} {}//{}\n" * len(faces)).format(*faces.flat).encode('utf-8'))
+    else:
+        mesh_bytestream.write(("f {} {} {}\n" * len(faces)).format(*faces.ravel()).encode('utf-8'))
+
 
 def read_obj(mesh_bytestream):
     """
@@ -90,85 +95,26 @@ def read_obj(mesh_bytestream):
         Note that the 'faces' indexes are 0-based
         (python conventions, not OBJ conventions, which start with 1)
     """
-    need_close = False
-    
     if isinstance(mesh_bytestream, bytes):
-        mesh_bytestream = BytesIO(mesh_bytestream)
-        need_close = True
-    if isinstance(mesh_bytestream, (str, Path)):
-        mesh_bytestream = open(mesh_bytestream, 'rb')
-        need_close = True
-    
-    try:
-        # For potentially huge meshes, many lists-of-lists is very inefficient with RAM
-        # Therefore we keep flattened lists, and reshape them afterwards.
-        vertices_xyz_flat = []
-        faces_flat = []
-        faces_normal_indices_flat = []
-        listed_normals_xyz_flat = []
+        mesh_bytes = mesh_bytestream
+    elif isinstance(mesh_bytestream, (str, Path)):
+        mesh_bytes = open(mesh_bytestream, 'rb').read()
+    else:
+        mesh_bytes = mesh_bytestream.read()
 
-        
-        for line in mesh_bytestream:
-            if line.startswith(b'v '):
-                vertices_xyz_flat.extend(map(float, line.split()[1:]))
-            if line.startswith(b'f '):
-                for word in line.split()[1:]:
-                    fields = word.split(b'/')
-                    faces_flat.append(int(fields[0]))
-                    if len(fields) == 3:
-                        faces_normal_indices_flat.append(int(fields[2]))
-            if line.startswith(b'vn '):
-                listed_normals_xyz_flat.extend(map(float, line.split()[1:]))
-    
-        if len(vertices_xyz_flat) % 3:
-            raise RuntimeError("Unexpected format: total vertex coord count is not divisible by 3!")
-        if len(faces_flat) % 3:
-            raise RuntimeError("Unexpected format: face index count is not divisible by 3!")
-        if len(listed_normals_xyz_flat) % 3:
-            raise RuntimeError("Unexpected format: normal components count is not divisible by 3!")
-    
-        vertices_xyz = np.array(vertices_xyz_flat, dtype=np.float32).reshape((-1,3))
-        faces = np.array(faces_flat, dtype=np.uint32).reshape((-1,3))
-        faces_normal_indices = np.array(faces_normal_indices_flat, dtype=np.uint32).reshape((-1,3))
-        listed_normals_xyz = np.array(listed_normals_xyz_flat, dtype=np.float32).reshape((-1,3))
+    # For faces, remove everything but the vertex index
+    mesh_bytes = re.sub(rb'(\d+)/\S+', rb'\1', mesh_bytes)
 
-        # In OBJ, indices start at index 1 (not 0), but we want to use numpy conventions
-        faces -= 1
-        faces_normal_indices -= 1
-        
-        if len(faces_normal_indices) > 0:
-            #
-            # Notice that we don't permit the same vertex to have two different normals,
-            # even if the vertex is referenced in two different faces.
-            # Hence the caveat above about out-of-order vertex normals being unsupported..
-            #
-            normals_xyz = np.zeros(vertices_xyz.shape, dtype=np.float32)
-            #
-            # TODO:
-            #   Speed up this loop with fancy indexing
-            #   I think this would work (untested):
-            #
-            #     normals_xyz[(faces[:, 0],)] = listed_normals_xyz[(faces_normal_indices[:,0],)]
-            #     normals_xyz[(faces[:, 1],)] = listed_normals_xyz[(faces_normal_indices[:,1],)]
-            #     normals_xyz[(faces[:, 2],)] = listed_normals_xyz[(faces_normal_indices[:,2],)]
-            #
-            #
-            for face, normal_indices in zip(faces, faces_normal_indices):
-                normals_xyz[face[0]] = listed_normals_xyz[normal_indices[0]]
-                normals_xyz[face[1]] = listed_normals_xyz[normal_indices[1]]
-                normals_xyz[face[2]] = listed_normals_xyz[normal_indices[2]]
+    # Read as CSV
+    df = pd.read_csv(BytesIO(mesh_bytes), sep=' ', header=None, names=['element', *'xyz'])
+    vertices_xyz = df.query('element == "v"')[[*'xyz']].values.astype(np.float32)
+    normals_xyz = df.query('element == "vn"')[[*'xyz']].values.astype(np.float32)
+    faces = df.query('element == "f"')[[*'xyz']].values.astype(np.int32)
 
-        elif len(listed_normals_xyz) > 0:
-            if len(listed_normals_xyz) != len(vertices_xyz):
-                raise RuntimeError("Listed normals do not match number of listed vertices")
-        else:
-            normals_xyz = np.zeros( (0,3), np.float32 )
+    # In OBJ, indices start at index 1 (not 0), but we want to use numpy conventions
+    faces -= 1
 
-       
-        if len(faces) > 0 and faces.max() >= len(vertices_xyz):
-            raise RuntimeError(f"Unexpected format: A face referenced vertex {faces.max()}, which is out-of-bounds for the vertex list.")
+    if len(faces) > 0 and faces.max() >= len(vertices_xyz):
+        raise RuntimeError(f"Unexpected format: A face referenced vertex {faces.max()}, which is out-of-bounds for the vertex list.")
 
-        return vertices_xyz, faces, normals_xyz
-    finally:
-        if need_close:
-            mesh_bytestream.close()
+    return vertices_xyz, faces, normals_xyz

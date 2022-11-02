@@ -39,6 +39,7 @@ outputs:
       run:
         - python >=3.6
         - numpy
+        - pandas
         - lz4 >=2,<4
 
         # See README for details about these dependencies
