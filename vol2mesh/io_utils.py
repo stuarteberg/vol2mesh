@@ -9,7 +9,7 @@ import ctypes
 from ctypes.util import find_library
 try:
     libc = ctypes.cdll.msvcrt # Windows
-except OSError:
+except (OSError, AttributeError):
     libc = ctypes.cdll.LoadLibrary(find_library('c'))
 
 class AutoDeleteDir:
