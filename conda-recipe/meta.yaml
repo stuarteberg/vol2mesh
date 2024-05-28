@@ -38,8 +38,9 @@ outputs:
         - setuptools
       run:
         - python >=3.6
-        - numpy
+        - numpy >=1.22.4
         - pandas
+        - scipy
         - lz4 >=2
 
         # See README for details about these dependencies
@@ -66,7 +67,6 @@ outputs:
         - vol2mesh
       requires:
         - pytest
-        - scipy
       commands:
         - pytest -s --tb=native --pyargs vol2mesh.tests
 
