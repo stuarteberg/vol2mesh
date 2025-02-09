@@ -7,6 +7,7 @@ import functools
 import subprocess
 from io import BytesIO
 from itertools import chain
+from contextlib import contextmanager
 
 import numpy as np
 import lz4.frame
@@ -848,31 +849,36 @@ class Mesh:
                 self.recompute_normals(True)
             return
 
+        logger.debug(f"Attempting to decimate to {target} (Reduce by {len(self.vertices_zyx) - target})")
+
         import openmesh as om
+
+        @contextmanager
+        def dummy_context(*args, **kwargs):
+            yield
 
         # Mesh construction in OpenMesh produces a lot of noise on stderr.
         # Send it to /dev/null
         try:
             sys.stderr.fileno()
-        except:
+        except Exception:
             # Can't redirect stderr if it has no file descriptor.
             # Just let the output spill to wherever it's going.
-            m = om.TriMesh(self.vertices_zyx[:, ::-1], self.faces)
+            _stdout_redirected = dummy_context
         else:
-            # Hide stderr, since OpenMesh construction is super noisy.
-            with stdout_redirected(stdout=sys.stderr):
-                m = om.TriMesh(self.vertices_zyx[:, ::-1], self.faces)
+            _stdout_redirected = stdout_redirected
 
-        h = om.TriMeshModQuadricHandle()
-        d = om.TriMeshDecimater(m)
-        d.add(h)
-        d.module(h).unset_max_err()
-        d.initialize()
+        with _stdout_redirected(stdout=sys.stderr):
+            m = om.TriMesh(self.vertices_zyx[:, ::-1], self.faces)
+            h = om.TriMeshModQuadricHandle()
+            d = om.TriMeshDecimater(m)
+            d.add(h)
+            d.module(h).unset_max_err()
+            d.initialize()
+            eliminated_count = d.decimate_to(target)
+            m.garbage_collection()
 
-        logger.debug(f"Attempting to decimate to {target} (Reduce by {len(self.vertices_zyx) - target})")
-        eliminated_count = d.decimate_to(target)
         logger.debug(f"Reduced by {eliminated_count}")
-        m.garbage_collection()
 
         self.vertices_zyx = m.points()[:, ::-1].astype(np.float32)
         self.faces = m.face_vertex_indices().astype(np.uint32)
