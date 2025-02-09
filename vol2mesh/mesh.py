@@ -11,6 +11,7 @@ from contextlib import contextmanager
 
 import numpy as np
 import lz4.frame
+from scipy.ndimage import find_objects
 from vol2mesh.util import compute_nonzero_box, extract_subvol, has_nonzero_edges
 
 try:
@@ -384,7 +385,7 @@ class Mesh:
             dict of ``{label: Mesh}``
         """
         if fullres_box_zyx is None:
-            fullres_box_zyx = np.array([[0,0,0], downsampled_volume_zyx.shape])
+            fullres_box_zyx = np.array([[0, 0, 0], downsampled_volume_zyx.shape])
         fullres_shape = fullres_box_zyx[1] - fullres_box_zyx[0]
         resolution = fullres_shape // downsampled_volume_zyx.shape
 
@@ -415,21 +416,20 @@ class Mesh:
             except ImportError:
                 pass
 
+        boxes = cls._label_boxes(downsampled_volume_zyx, labels)
+
         meshes = {}
         for label in labels:
-            mask = (downsampled_volume_zyx == label)
-
-            # Save time by extracting the smallest
-            # bounding box possible for the object.
-            subvol_box = compute_nonzero_box(mask)
-            if not subvol_box.any():
+            try:
+                subvol_box = boxes[label]
+            except KeyError:
                 meshes[label] = None
                 continue
 
             subvol_box[0] = np.maximum(0, subvol_box[0] - 1)
-            subvol_box[1] = np.minimum(mask.shape, subvol_box[1] + 1)
+            subvol_box[1] = np.minimum(downsampled_volume_zyx.shape, subvol_box[1] + 1)
 
-            subvol_mask = extract_subvol(mask, subvol_box)
+            subvol_mask = (extract_subvol(downsampled_volume_zyx, subvol_box) == label)
             mesh = cls.from_binary_vol(subvol_mask, subvol_box, method, **kwargs)
 
             # Upscale and translate the mesh into place
@@ -438,6 +438,34 @@ class Mesh:
             meshes[label] = mesh
 
         return meshes
+
+    @classmethod
+    def _label_boxes(cls, vol, labels):
+        """
+        Find the bounding box of each object of interest in vol,
+        as specified in the given list of label ids.
+        """
+        boxes = {}
+        if max(labels) <= 1e6:
+            # Use scipy to get a list of all objects.
+            vol[vol > max(labels)] = 0
+            slices = find_objects(vol)
+            for label, sl in enumerate(slices, start=1):
+                if not sl:
+                    continue
+                tuples = [(s.start, s.stop) for s in sl]
+                box = np.array(tuples).transpose()
+                boxes[label] = box
+        else:
+            # Slow path
+            for label in labels:
+                mask = (vol == label)
+                subvol_box = compute_nonzero_box(mask)
+                if not subvol_box.any():
+                    continue
+                boxes[label] = subvol_box
+
+        return boxes
 
 
     @classmethod
