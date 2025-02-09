@@ -19,56 +19,33 @@ build:
   number: 0
   string: "{{ PKG_BUILDNUM }}_py{{ CONDA_PY }}_g{{ GIT_FULL_HASH[:7] }}"
   noarch: python
+  script: {{ PYTHON }} -m pip install . --no-deps --ignore-installed --no-build-isolation --no-index -vv
 
-outputs:
-  # The base package has fewer dependencies,
-  # but lacks some functionality:
-  #  - the scikit-image marching cubes implementation
-  #  - numba acceleration for normals calculation
-  #  - laplacian smoothing on an existing mesh
-  #  - stitching multiple meshes together into a water-tight whole
-  - name: vol2mesh-base
-    script: build_base.sh
-    build:
-      noarch: python
-    requirements:
-      build:
-        - python >=3.6
-        - pip
-        - setuptools
-      run:
-        - python >=3.6
-        - numpy >=1.22.4
-        - pandas
-        - scipy
-        - lz4 >=2
+requirements:
+  host:
+    - python >=3.6
+    - pip
+    - setuptools
+  run:
+    - python >=3.6
+    - numpy >=1.22.4
+    - pandas
+    - scipy
+    - lz4 >=2
+    - scikit-image >=0.13
+    - numba
+    - openmesh-python
+    - marching_cubes >=0.2
+    - pyfqmr
+    - dvidutils >=0.0.post81
 
-        # See README for details about these dependencies
-        - marching_cubes >=0.2
-        - pyfqmr
-        - dvidutils >=0.0.post81
-
-    test:
-      imports:
-        - vol2mesh
-
-  - name: vol2mesh
-    build:
-      noarch: python
-    requirements:
-      run:
-        - {{ pin_subpackage('vol2mesh-base', exact=True) }}
-        - scikit-image >=0.13
-        - numba
-        - openmesh-python
-
-    test:
-      imports:
-        - vol2mesh
-      requires:
-        - pytest
-      commands:
-        - pytest -s --tb=native --pyargs vol2mesh.tests
+test:
+  imports:
+    - vol2mesh
+  requires:
+    - pytest
+  commands:
+    - pytest -s --tb=native --pyargs vol2mesh.tests
 
 about:
   home: https://github.com/janelia-flyem/vol2mesh
