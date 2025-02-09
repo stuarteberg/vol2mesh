@@ -45,7 +45,7 @@ outputs:
 
         # See README for details about these dependencies
         - marching_cubes >=0.2
-        - fq-mesh-simplification
+        - pyfqmr
         - dvidutils >=0.0.post81
 
     test:

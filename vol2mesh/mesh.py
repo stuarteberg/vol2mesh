@@ -12,6 +12,7 @@ from contextlib import contextmanager
 import numpy as np
 import lz4.frame
 from scipy.ndimage import find_objects
+import pyfqmr
 from vol2mesh.util import compute_nonzero_box, extract_subvol, has_nonzero_edges
 
 try:
@@ -23,7 +24,7 @@ except ImportError:
 from .normals import compute_face_normals, compute_vertex_normals
 from .obj_utils import write_obj, read_obj
 from .ngmesh import read_ngmesh, write_ngmesh
-from .io_utils import TemporaryNamedPipe, AutoDeleteDir, stdout_redirected
+from .io_utils import stdout_redirected
 
 logger = logging.getLogger(__name__)
 
@@ -785,88 +786,34 @@ class Mesh:
         else:
             self.normals_zyx = compute_vertex_normals(self.vertices_zyx, self.faces, face_normals=face_normals)
 
-
-    def simplify(self, fraction, in_memory=False, timeout=None, hide_logging=True):
-        """
-        Simplify this mesh in-place, by the given fraction (of the original vertex count).
-
-        Args:
-            fraction:
-                Reduce the overall vertex count so that only a fraction of
-                them remain, as specified by this argument.
-            in_memory:
-                Interact with the decimation subprocess via a pipe, rather than a file
-                At the time of this writing, this feature no longer works.
-            timeout:
-                Raise a TimeoutError if the decimation routine takes
-                longer than the given number of seconds.
-                By default, no timeout is enforced (it can hang forever).
-            hide_logging:
-                The subprocess which performs the decimation is quite noisy.
-                We hide its output by default, but you can see it with this argument.
-        Returns:
-            None. This method operates on the mesh in-place.
-        """
-        # The fq-mesh-simplify tool rejects inputs that are too small (if the decimated face count would be less than 4).
-        # We have to check for this in advance because we can't gracefully handle the error.
-        # https://github.com/neurolabusc/Fast-Quadric-Mesh-Simplification-Pascal-/blob/master/c_code/Main.cpp
-        if fraction is None or fraction == 1.0 or (len(self.faces) * fraction <= 4):
-            if self.normals_zyx.shape[0] == 0:
-                self.recompute_normals(True)
+    def simplify(self, fraction):
+        if fraction is None or fraction == 1.0:
             return
 
-        stdout = subprocess.DEVNULL if hide_logging else None
+        simplifier = pyfqmr.Simplify()
+        simplifier.setMesh(self.vertices_zyx, self.faces)
+        target_face_count = int(fraction * len(self.faces))
+        simplifier.simplify_mesh(
+            target_face_count,
+            aggressiveness=7,
+            preserve_border=True,
+            lossless=False
+        )
 
-        if in_memory:
-            obj_bytes = write_obj(self.vertices_zyx[:,::-1], self.faces)
-            bytes_stream = BytesIO(obj_bytes)
-
-            simplify_input_pipe = TemporaryNamedPipe('input.obj')
-            simplify_input_pipe.start_writing_stream(bytes_stream)
-
-            simplify_output_pipe = TemporaryNamedPipe('output.obj')
-
-            cmd = f'fq-mesh-simplify {simplify_input_pipe.path} {simplify_output_pipe.path} {fraction}'
-            proc = subprocess.Popen(cmd, shell=True, stdout=stdout)
-            mesh_stream = simplify_output_pipe.open_stream('rb')
-
-            # The fq-mesh-simplify tool does not compute normals.
-            vertices_xyz, self.faces, _empty_normals = read_obj(mesh_stream)
-            self.vertices_zyx = vertices_xyz[:,::-1]
-            mesh_stream.close()
-
-            proc.wait(timeout=1.0)
-            if proc.returncode != 0:
-                msg = f"Child process returned an error code: {proc.returncode}.\n"\
-                      f"Command was: {cmd}"
-                logger.error(msg)
-                raise RuntimeError(msg)
-        else:
-            obj_dir = AutoDeleteDir()
-            undecimated_path = f'{obj_dir}/undecimated.obj'
-            decimated_path = f'{obj_dir}/decimated.obj'
-            write_obj(self.vertices_zyx[:,::-1], self.faces, output_file=undecimated_path)
-            cmd = f'fq-mesh-simplify {undecimated_path} {decimated_path} {fraction}'
-            subprocess.check_call(cmd, shell=True, timeout=timeout, stdout=stdout)
-            with open(decimated_path, 'rb') as decimated_stream:
-                # The fq-mesh-simplify tool does not compute normals.
-                vertices_xyz, self.faces, _empty_normals = read_obj(decimated_stream)
-                self.vertices_zyx = vertices_xyz[:,::-1]
+        vertices_zyx, faces, _face_normals = simplifier.getMesh()
+        self.vertices_zyx = vertices_zyx.astype(np.float32)
+        self.faces = faces.astype(np.int32)
 
         # Force normal reomputation to eliminate possible degenerate faces
         # (Can decimation produce degenerate faces?)
         self.recompute_normals(True)
 
-
     def simplify_openmesh(self, fraction):
         """
+        Deprecated.  The pyfqmr-based simplify() method is gives better results and is more stable.
+
         Simplify this mesh in-place, by the given fraction (of the original vertex count).
         Uses OpenMesh to perform the decimation.
-        This has similar performance to our default simplify() method,
-        but does not require a subprocess or conversion to OBJ.
-        Therefore, it can be faster in cases where I/O is the major bottleneck,
-        rather than the decimation procedure itself.
-        (For example, when lightly decimating a large mesh, I/O is the bottleneck.)
         """
         if len(self.vertices_zyx) == 0:
             return
